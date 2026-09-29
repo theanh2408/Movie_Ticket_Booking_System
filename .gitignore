@@ -1,0 +1,40 @@
+# =========================
+# Frontend (React / Vite / Node.js)
+# =========================
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Môi trường biến (Security)
+.env
+.env.*
+!.env.example
+
+# =========================
+# Backend (C# / .NET Core)
+# =========================
+bin/
+obj/
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# =========================
+# Hệ điều hành & Editor
+# =========================
+.DS_Store
+Thumbs.db
+.idea/
+
+# Cấu hình VS Code
+.vscode/*
+# Giữ lại các file cấu hình workspace cần thiết cho team
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/settings.json
