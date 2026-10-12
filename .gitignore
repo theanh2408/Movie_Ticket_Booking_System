@@ -4,6 +4,8 @@
 node_modules/
 dist/
 dist-ssr/
+skills/
+Frontend/Docs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
