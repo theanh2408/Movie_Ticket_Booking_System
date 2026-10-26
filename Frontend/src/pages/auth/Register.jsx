@@ -1,10 +1,11 @@
-﻿import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { CineLogo } from '../../components/CineLogo';
 import { Button } from '../../components/Button';
 
 export const Register = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -72,30 +73,33 @@ export const Register = () => {
         // no-op
       }
 
+      const returnUrl = location.state?.returnUrl || '/';
+      const bookingData = location.state?.bookingData;
+
       setSuccessMsg('Đăng ký tài khoản thành công!');
       setTimeout(() => {
-        navigate('/');
+        navigate(returnUrl, { state: bookingData });
       }, 700);
     }, 700);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f131d] text-[#dfe2f1]">
-      <div className="w-full max-w-lg bg-[#171b26] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-surface text-on-surface">
+      <div className="w-full max-w-lg bg-surface-low border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
         <div className="text-center space-y-2">
           <Link to="/" className="inline-block">
             <CineLogo size="md" />
           </Link>
-          <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#dfe2f1]">
+          <h1 className="font-headline text-2xl font-bold text-on-surface">
             Đăng Ký Thành Viên Vibe Cinema
           </h1>
-          <p className="text-xs text-[#af8782]">
+          <p className="text-xs text-outline">
             Tạo tài khoản để nhận ưu đãi thành viên và quản lý lịch sử xem phim
           </p>
         </div>
 
         {errorMsg && (
-          <div className="p-3.5 rounded-xl bg-[#93000a]/30 border border-[#93000a] text-xs text-[#ffdad6] flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-primary-dark/30 border border-primary-dark text-xs text-[#ffdad6] flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">error</span>
             <span>{errorMsg}</span>
           </div>
@@ -111,56 +115,56 @@ export const Register = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Họ và tên *</label>
+              <label className="text-xs font-semibold text-outline">Họ và tên *</label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Nguyễn Văn An"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Số điện thoại *</label>
+              <label className="text-xs font-semibold text-outline">Số điện thoại *</label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="0912 345 678"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-[#af8782]">Email đăng nhập *</label>
+            <label className="text-xs font-semibold text-outline">Email đăng nhập *</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="vidu@Vibe Cinema.vn"
-              className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+              className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Ngày sinh *</label>
+              <label className="text-xs font-semibold text-outline">Ngày sinh *</label>
               <input
                 type="date"
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Giới tính</label>
+              <label className="text-xs font-semibold text-outline">Giới tính</label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               >
                 <option value="Nam">Nam</option>
                 <option value="Nữ">Nữ</option>
@@ -171,42 +175,42 @@ export const Register = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Mật khẩu *</label>
+              <label className="text-xs font-semibold text-outline">Mật khẩu *</label>
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Ít nhất 6 ký tự"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#af8782]">Xác nhận mật khẩu *</label>
+              <label className="text-xs font-semibold text-outline">Xác nhận mật khẩu *</label>
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Nhập lại mật khẩu"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-[#af8782]">
+          <div className="flex items-center justify-between text-xs text-outline">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={agreeTerms}
                 onChange={(e) => setAgreeTerms(e.target.checked)}
-                className="rounded accent-[#e50914]"
+                className="rounded accent-primary"
               />
               <span>Tôi đồng ý với Điều khoản Vibe Cinema</span>
             </label>
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="text-[#af8782] hover:text-[#dfe2f1]"
+              className="text-outline hover:text-on-surface cursor-pointer"
             >
               {showPassword ? 'Ẩn' : 'Hiện'} mật khẩu
             </button>
@@ -226,15 +230,15 @@ export const Register = () => {
           </div>
         </form>
 
-        <div className="text-center text-xs text-[#af8782] space-y-2">
+        <div className="text-center text-xs text-outline space-y-2">
           <div>
             Đã có tài khoản?{' '}
-            <Link to="/login" className="text-[#e50914] hover:underline font-semibold">
+            <Link to="/login" state={location.state} className="text-primary hover:underline font-semibold">
               Đăng nhập ngay
             </Link>
           </div>
           <div>
-            <Link to="/" className="text-[#af8782] hover:text-[#dfe2f1]">
+            <Link to="/" className="text-outline hover:text-on-surface">
               ← Quay về trang chủ
             </Link>
           </div>
@@ -244,4 +248,3 @@ export const Register = () => {
   );
 };
 export default Register;
-

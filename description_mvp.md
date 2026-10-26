@@ -9,7 +9,7 @@
 * Xem các suất chiếu.
 * Xem sơ đồ ghế và chọn ghế.
 * Đặt vé xem phim.
-* Mô phỏng thanh toán vé.
+* Đặt vé và thanh toán trực tuyến qua cổng thanh toán.
 * Xem thông tin xác nhận đặt vé.
 
 ### Quản trị viên (Admin)

@@ -1,12 +1,13 @@
 import React from 'react';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
+import { cn } from '../lib/cn';
 
-export const MainLayout = ({ children }) => {
+export const MainLayout = ({ children, className = '' }) => {
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f131d] text-[#dfe2f1] selection:bg-[#e50914] selection:text-[#fff7f6]">
+    <div className={cn('min-h-screen flex flex-col bg-surface text-on-surface selection:bg-primary selection:text-white', className)}>
       <Header />
-      <main className="flex-1 pt-20 md:pt-20">
+      <main className="flex-1 pt-20">
         {children}
       </main>
       <Footer />

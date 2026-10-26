@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { SeatIcon } from '../../components/SeatIcon';
 import { Button } from '../../components/Button';
 import { MOVIES, THEATERS } from '../../assets/mockData';
+import { cn } from '../../lib/cn';
 
 const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J'];
 const COLS_PER_ROW = 12;
@@ -31,6 +32,21 @@ export const SeatSelection = () => {
 
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Check login status
+  useEffect(() => {
+    const user = localStorage.getItem('Vibe Cinema_user');
+    if (!user) {
+      navigate('/login', {
+        state: {
+          returnUrl: location.pathname,
+          bookingData: session,
+          message: 'Vui lòng đăng nhập để tiếp tục chọn ghế và đặt vé.',
+        },
+        replace: true,
+      });
+    }
+  }, [navigate, location.pathname, session]);
 
   // Fixed simulated booked seats
   const bookedSeatIds = useMemo(() => {
@@ -78,51 +94,45 @@ export const SeatSelection = () => {
           <div className="flex items-center gap-3">
             <Link
               to={`/movie/${session.movieId}`}
-              className="p-2 rounded-xl bg-[#171b26] hover:bg-[#262a35] text-[#af8782] hover:text-[#dfe2f1] transition-colors"
+              className="p-2 rounded-xl bg-surface-low hover:bg-surface-high text-outline hover:text-on-surface transition-colors"
               title="Quay lại chi tiết phim"
             >
               <span className="material-symbols-outlined text-[20px]">arrow_back</span>
             </Link>
             <div>
-              <span className="text-xs font-bold text-[#ffb95f] uppercase tracking-wider">
+              <span className="text-xs font-bold text-secondary uppercase tracking-wider">
                 Bước 2: Chọn vị trí ghế ngồi
               </span>
-              <h1 className="font-['Space_Grotesk'] text-xl sm:text-2xl font-bold text-[#dfe2f1]">
+              <h1 className="font-headline text-xl sm:text-2xl font-bold text-on-surface">
                 {session.movieTitle}
               </h1>
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 text-xs text-[#af8782]">
-            <span className="text-[#dfe2f1] font-semibold">{session.theaterName}</span>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-outline">
+            <span className="text-on-surface font-semibold">{session.theaterName}</span>
             <span>•</span>
-            <span className="text-[#ffb95f]">{session.room}</span>
+            <span className="text-secondary">{session.room}</span>
             <span>•</span>
-            <span className="text-[#7bd0ff]">{session.time}</span>
+            <span className="text-tertiary">{session.time}</span>
           </div>
         </div>
 
         {/* Warning notification */}
         {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-[#93000a]/30 border border-[#93000a] text-xs text-[#ffdad6] flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-primary-dark/30 border border-primary-dark text-xs text-[#ffdad6] flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">error</span>
             <span>{errorMessage}</span>
           </div>
         )}
 
         {/* Auditorium Screen & Seats Map */}
-        <div className="p-6 rounded-3xl bg-[#171b26] border border-white/5 space-y-8">
+        <div className="p-6 rounded-3xl bg-surface-low border border-white/5 space-y-8">
           {/* Cinema Screen Curve */}
           <div className="relative flex flex-col items-center pt-2 pb-4">
-            <div className="w-4/5 h-3 border-t-4 border-[#e50914] rounded-[50%] shadow-[0_6px_25px_rgba(229,9,20,0.8)]" />
-            <div
-              className="w-full h-12 mt-1 pointer-events-none"
-              style={{
-                background:
-                  'radial-gradient(ellipse at top, rgba(229, 9, 20, 0.25) 0%, transparent 70%)',
-              }}
-            />
-            <span className="text-[11px] font-bold text-[#af8782] tracking-widest uppercase -mt-4">
+            <div className="w-4/5 h-3 border-t-4 border-primary rounded-[50%] shadow-[0_6px_25px_rgba(229,9,20,0.8)]" />
+            <div className="w-full h-12 mt-1 pointer-events-none bg-[radial-gradient(ellipse_at_top,rgba(229,9,20,0.25)_0%,transparent_70%)]" />
+            <span className="text-[11px] font-bold text-outline tracking-widest uppercase -mt-4">
               MÀN HÌNH CHIẾU
             </span>
           </div>
@@ -133,7 +143,7 @@ export const SeatSelection = () => {
               {ROWS.map((row) => (
                 <div key={row} className="flex items-center justify-center gap-1.5 sm:gap-2">
                   {/* Row Label Left */}
-                  <span className="w-5 text-center font-['Space_Grotesk'] text-xs font-bold text-[#af8782]">
+                  <span className="w-5 text-center font-headline text-xs font-bold text-outline">
                     {row}
                   </span>
 
@@ -152,7 +162,7 @@ export const SeatSelection = () => {
                       return (
                         <div
                           key={seatId}
-                          className={colNum === 3 || colNum === 9 ? 'mr-3' : ''}
+                          className={cn(colNum === 3 || colNum === 9 ? 'mr-3' : '')}
                         >
                           <SeatIcon
                             seatId={seatId}
@@ -166,7 +176,7 @@ export const SeatSelection = () => {
                   </div>
 
                   {/* Row Label Right */}
-                  <span className="w-5 text-center font-['Space_Grotesk'] text-xs font-bold text-[#af8782]">
+                  <span className="w-5 text-center font-headline text-xs font-bold text-outline">
                     {row}
                   </span>
                 </div>
@@ -175,26 +185,24 @@ export const SeatSelection = () => {
           </div>
 
           {/* Seat Legend */}
-          <div className="flex flex-wrap items-center justify-center gap-6 pt-4 border-t border-white/5 text-xs text-[#af8782]">
+          <div className="flex flex-wrap items-center justify-center gap-6 pt-4 border-t border-white/5 text-xs text-outline">
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-t-md bg-[#1f2937] border border-white/20" />
+              <span className="size-5 rounded-t-md bg-seat-available border border-white/20" />
               <span>Ghế trống ({SEAT_PRICE.toLocaleString('vi-VN')}đ)</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-t-md bg-[#e50914] text-white shadow-[0_0_8px_rgba(229,9,20,0.6)]" />
-              <span className="text-[#dfe2f1] font-semibold">Ghế đang chọn</span>
+              <span className="size-5 rounded-t-md bg-seat-selected text-white shadow-glow-seat" />
+              <span className="text-on-surface font-semibold">Ghế đang chọn</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-t-md bg-[#111827] text-white/20 opacity-40 flex items-center justify-center text-[10px]">
-                ✕
-              </span>
+              <span className="size-5 rounded-t-md bg-seat-booked" />
               <span>Ghế đã được đặt</span>
             </div>
           </div>
         </div>
 
         {/* Bottom Booking Summary Sticky Bar */}
-        <div className="p-5 rounded-2xl bg-[#1c1f2a] border border-white/10 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="p-5 rounded-2xl bg-surface-container border border-white/10 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img
               src={session.moviePoster}
@@ -202,13 +210,13 @@ export const SeatSelection = () => {
               className="w-12 aspect-[2/3] object-cover rounded-lg shadow-md hidden sm:block"
             />
             <div>
-              <div className="text-xs text-[#af8782]">
+              <div className="text-xs text-outline">
                 Ghế đã chọn ({selectedSeatIds.length}/8):
               </div>
-              <div className="font-['Space_Grotesk'] text-lg font-bold text-[#ffb95f]">
+              <div className="font-headline text-lg font-bold text-secondary">
                 {selectedSeatIds.length > 0 ? selectedSeatIds.join(', ') : 'Chưa chọn ghế'}
               </div>
-              <div className="text-[11px] text-[#af8782] mt-0.5">
+              <div className="text-[11px] text-outline mt-0.5">
                 {session.theaterName} • {session.room} • {session.time} ({session.date})
               </div>
             </div>
@@ -216,8 +224,8 @@ export const SeatSelection = () => {
 
           <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-white/5">
             <div className="text-right">
-              <div className="text-xs text-[#af8782]">Tổng tạm tính:</div>
-              <div className="font-['Space_Grotesk'] text-2xl font-bold text-[#e50914]">
+              <div className="text-xs text-outline">Tổng tạm tính:</div>
+              <div className="font-headline text-2xl font-bold text-primary">
                 {totalPrice.toLocaleString('vi-VN')}đ
               </div>
             </div>

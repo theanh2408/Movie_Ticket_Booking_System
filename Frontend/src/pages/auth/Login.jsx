@@ -1,8 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { CineLogo } from '../../components/CineLogo';
 import { Button } from '../../components/Button';
-import { MOCK_USER } from '../../assets/mockData';
 
 export const Login = () => {
   const navigate = useNavigate();
@@ -59,22 +58,29 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f131d] text-[#dfe2f1]">
-      <div className="w-full max-w-md bg-[#171b26] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-surface text-on-surface">
+      <div className="w-full max-w-md bg-surface-low border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative">
         <div className="text-center space-y-2">
           <Link to="/" className="inline-block">
             <CineLogo size="md" />
           </Link>
-          <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-[#dfe2f1]">
+          <h1 className="font-headline text-2xl font-bold text-on-surface">
             Đăng Nhập Tài Khoản
           </h1>
-          <p className="text-xs text-[#af8782]">
+          <p className="text-xs text-outline">
             Đăng nhập để đặt vé nhanh chóng và quản lý vé điện tử của bạn
           </p>
         </div>
 
+        {location.state?.message && !errorMsg && (
+          <div className="p-3.5 rounded-xl bg-secondary/15 border border-secondary/30 text-xs text-secondary flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">info</span>
+            <span>{location.state.message}</span>
+          </div>
+        )}
+
         {errorMsg && (
-          <div className="p-3.5 rounded-xl bg-[#93000a]/30 border border-[#93000a] text-xs text-[#ffdad6] flex items-center gap-2">
+          <div className="p-3.5 rounded-xl bg-primary-dark/30 border border-primary-dark text-xs text-[#ffdad6] flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">error</span>
             <span>{errorMsg}</span>
           </div>
@@ -82,9 +88,9 @@ export const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-[#af8782]">Email đăng nhập:</label>
+            <label className="text-xs font-semibold text-outline">Email đăng nhập:</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-[#af8782] text-[18px]">
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[18px]">
                 mail
               </span>
               <input
@@ -92,15 +98,15 @@ export const Login = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="vidu@Vibe Cinema.vn"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-[#af8782]">Mật khẩu:</label>
+            <label className="text-xs font-semibold text-outline">Mật khẩu:</label>
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-[#af8782] text-[18px]">
+              <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[18px]">
                 lock
               </span>
               <input
@@ -108,12 +114,12 @@ export const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Nhập mật khẩu"
-                className="w-full bg-[#0f131d] border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-[#dfe2f1] focus:outline-none focus:border-[#e50914] transition-colors"
+                className="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-colors"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#af8782] hover:text-[#dfe2f1]"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">
                   {showPassword ? 'visibility_off' : 'visibility'}
@@ -137,26 +143,26 @@ export const Login = () => {
         </form>
 
         {/* Demo Fast Login */}
-        <div className="p-3 rounded-xl bg-[#0f131d] border border-white/5 flex items-center justify-between text-xs">
-          <span className="text-[#af8782]">Tài khoản mẫu:</span>
+        <div className="p-3 rounded-xl bg-surface border border-white/5 flex items-center justify-between text-xs">
+          <span className="text-outline">Tài khoản mẫu:</span>
           <button
             type="button"
             onClick={handleDemoLogin}
-            className="text-[#ffb95f] hover:underline font-semibold cursor-pointer"
+            className="text-secondary hover:underline font-semibold cursor-pointer"
           >
             Điền thông tin mẫu
           </button>
         </div>
 
-        <div className="text-center text-xs text-[#af8782] space-y-2">
+        <div className="text-center text-xs text-outline space-y-2">
           <div>
             Chưa có tài khoản?{' '}
-            <Link to="/register" className="text-[#e50914] hover:underline font-semibold">
+            <Link to="/register" state={location.state} className="text-primary hover:underline font-semibold">
               Đăng ký ngay
             </Link>
           </div>
           <div>
-            <Link to="/" className="text-[#af8782] hover:text-[#dfe2f1]">
+            <Link to="/" className="text-outline hover:text-on-surface">
               ← Quay về trang chủ
             </Link>
           </div>
@@ -166,4 +172,3 @@ export const Login = () => {
   );
 };
 export default Login;
-
