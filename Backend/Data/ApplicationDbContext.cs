@@ -28,6 +28,10 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Payment> Payments { get; set; }
 
+    public virtual DbSet<PaymentAttempt> PaymentAttempts { get; set; }
+
+    public virtual DbSet<PaymentAttemptSeat> PaymentAttemptSeats { get; set; }
+
     public virtual DbSet<Room> Rooms { get; set; }
 
     public virtual DbSet<Seat> Seats { get; set; }
@@ -139,6 +143,100 @@ public partial class ApplicationDbContext : DbContext
                 .HasForeignKey(d => d.InvoiceId)
                 .HasConstraintName("FK_Payment_Invoice");
         });
+
+
+        modelBuilder.Entity<PaymentAttempt>(entity =>
+        {
+            entity.ToTable("PaymentAttempt");
+
+            entity.HasKey(e => e.PaymentAttemptId);
+
+            entity.Property(e => e.PaymentAttemptId)
+                .HasColumnName("PaymentAttemptID");
+
+            entity.Property(e => e.UserId)
+                .HasColumnName("UserID");
+
+            entity.Property(e => e.ShowtimeId)
+                .HasColumnName("ShowtimeID");
+
+            entity.Property(e => e.Amount)
+                .HasColumnType("decimal(18, 2)");
+
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("PENDING");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime2")
+                .HasDefaultValueSql("SYSUTCDATETIME()");
+
+            entity.Property(e => e.ExpiresAt)
+                .HasColumnType("datetime2");
+
+            entity.Property(e => e.CompletedAt)
+                .HasColumnType("datetime2");
+
+            entity.Property(e => e.IdempotencyKey)
+                .HasColumnName("IdempotencyKey");
+
+            entity.HasIndex(e => new { e.UserId, e.IdempotencyKey })
+                .IsUnique()
+                .HasDatabaseName("UQ_PaymentAttempt_User_Idempotency");
+
+            entity.HasIndex(e => new { e.Status, e.ExpiresAt })
+                .HasDatabaseName("IX_PaymentAttempt_Status_ExpiresAt");
+
+            entity.HasOne<Account>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .HasConstraintName("FK_PaymentAttempt_Account");
+
+            entity.HasOne<Showtime>()
+                .WithMany()
+                .HasForeignKey(e => e.ShowtimeId)
+                .HasConstraintName("FK_PaymentAttempt_Showtime");
+
+            entity.HasMany(e => e.PaymentAttemptSeats)
+                .WithOne(e => e.PaymentAttempt)
+                .HasForeignKey(e => e.PaymentAttemptId)
+                .HasConstraintName("FK_PaymentAttemptSeat_Attempt");
+        });
+
+
+        modelBuilder.Entity<PaymentAttemptSeat>(entity =>
+        {
+            entity.ToTable("PaymentAttemptSeat");
+
+            entity.HasKey(e => new
+            {
+                e.PaymentAttemptId,
+                e.ShowtimeSeatId
+            });
+
+            entity.Property(e => e.PaymentAttemptId)
+                .HasColumnName("PaymentAttemptID");
+
+            entity.Property(e => e.ShowtimeSeatId)
+                .HasColumnName("Showtime_SeatID");
+
+            entity.Property(e => e.Price)
+                .HasColumnType("decimal(18, 2)");
+
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true);
+
+            entity.HasIndex(e => e.ShowtimeSeatId)
+                .IsUnique()
+                .HasFilter("[IsActive] = 1")
+                .HasDatabaseName("UQ_PaymentAttemptSeat_Active");
+
+            entity.HasOne(e => e.ShowtimeSeat)
+                .WithMany()
+                .HasForeignKey(e => e.ShowtimeSeatId)
+                .HasConstraintName("FK_PaymentAttemptSeat_ShowtimeSeat");
+        });
+
 
         modelBuilder.Entity<Room>(entity =>
         {

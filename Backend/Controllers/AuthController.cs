@@ -117,16 +117,13 @@ public class AuthController : ControllerBase
         }
     }
 
+
     [Authorize]
     [HttpGet("me")]
-    public IActionResult GetMe()
+    public async Task<IActionResult> GetMe()
     {
         var userId = User.FindFirstValue(
             ClaimTypes.NameIdentifier);
-
-        var fullName = User.FindFirstValue(ClaimTypes.Name);
-        var email = User.FindFirstValue(ClaimTypes.Email);
-        var role = User.FindFirstValue(ClaimTypes.Role);
 
         if (!int.TryParse(userId, out var parsedUserId))
         {
@@ -138,16 +135,23 @@ public class AuthController : ControllerBase
             });
         }
 
+        var profile = await _authService.GetProfileAsync(
+            parsedUserId);
+
+        if (profile == null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "User not found"
+            });
+        }
+
         return Ok(new
         {
             success = true,
-            data = new
-            {
-                userId = parsedUserId,
-                fullName,
-                email,
-                role
-            },
+            data = profile,
             message = "User retrieved successfully"
         });
     }
@@ -206,6 +210,58 @@ public class AuthController : ControllerBase
                 gender = request.Gender
             },
             message = "Profile updated successfully"
+        });
+    }
+
+
+    [Authorize]
+    [HttpPatch("me/password")]
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest request)
+    {
+        var userIdClaim = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Invalid user token"
+            });
+        }
+
+        var result = await _authService.ChangePasswordAsync(
+            userId,
+            request.CurrentPassword,
+            request.NewPassword);
+
+        if (result == null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "User not found"
+            });
+        }
+
+        if (!result.Value)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Current password is incorrect"
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = (object?)null,
+            message = "Password changed successfully"
         });
     }
 }

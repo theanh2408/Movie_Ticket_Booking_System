@@ -172,7 +172,7 @@ public class AuthService
         if (string.IsNullOrWhiteSpace(key))
         {
             throw new InvalidOperationException(
-                "JWT key is missing. Check appsettings.json and the current environment.");
+                "JWT key is missing. Set Jwt:Key via user-secrets or the Jwt__Key environment variable.");
         }
 
         var issuer = _configuration["Jwt:Issuer"];
@@ -259,5 +259,110 @@ public class AuthService
         int rowsAffected = await command.ExecuteNonQueryAsync();
 
         return rowsAffected > 0;
+    }
+
+
+    public async Task<bool?> ChangePasswordAsync(
+        int userId,
+        string currentPassword,
+        string newPassword)
+    {
+        await using var connection =
+            _connectionFactory.CreateConnection();
+
+        await connection.OpenAsync();
+
+        const string sql = """
+        SELECT PasswordHash
+        FROM dbo.Account
+        WHERE UserID = @UserID;
+        """;
+
+        string? passwordHash;
+
+        await using (var command = new SqlCommand(sql, connection))
+        {
+            command.Parameters.Add("@UserID", SqlDbType.Int)
+                .Value = userId;
+
+            var result = await command.ExecuteScalarAsync();
+
+            if (result == null || result == DBNull.Value)
+            {
+                return null;
+            }
+
+            passwordHash = result as string;
+        }
+
+        if (string.IsNullOrWhiteSpace(passwordHash) ||
+            !BCrypt.Net.BCrypt.Verify(currentPassword, passwordHash))
+        {
+            return false;
+        }
+
+        var newPasswordHash =
+            BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+        const string updateSql = """
+        UPDATE dbo.Account
+        SET PasswordHash = @PasswordHash
+        WHERE UserID = @UserID;
+        """;
+
+        await using var updateCommand =
+            new SqlCommand(updateSql, connection);
+
+        updateCommand.Parameters.Add(
+            "@PasswordHash", SqlDbType.NVarChar, 255)
+            .Value = newPasswordHash;
+
+        updateCommand.Parameters.Add("@UserID", SqlDbType.Int)
+            .Value = userId;
+
+        return await updateCommand.ExecuteNonQueryAsync() > 0;
+    }
+
+
+    public async Task<object?> GetProfileAsync(int userId)
+    {
+        await using var connection =
+            _connectionFactory.CreateConnection();
+
+        await connection.OpenAsync();
+
+        const string sql = """
+        SELECT UserID, FullName, Phone, Email, DOB, Gender, Role
+        FROM dbo.Account
+        WHERE UserID = @UserID;
+        """;
+
+        await using var command = new SqlCommand(sql, connection);
+
+        command.Parameters.Add("@UserID", SqlDbType.Int).Value = userId;
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new
+        {
+            userId = Convert.ToInt32(reader["UserID"]),
+            fullName = reader["FullName"] as string,
+            phone = reader["Phone"] == DBNull.Value
+                ? null
+                : reader["Phone"] as string,
+            email = reader["Email"] as string,
+            dob = reader["DOB"] == DBNull.Value
+                ? (DateTime?)null
+                : Convert.ToDateTime(reader["DOB"]),
+            gender = reader["Gender"] == DBNull.Value
+                ? null
+                : reader["Gender"] as string,
+            role = reader["Role"] as string
+        };
     }
 }
