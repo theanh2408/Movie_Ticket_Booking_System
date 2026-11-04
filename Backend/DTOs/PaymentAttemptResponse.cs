@@ -14,4 +14,6 @@ public class PaymentAttemptResponse
     public string Status { get; set; } = "PENDING";
 
     public DateTime ExpiresAt { get; set; }
+
+    public int RemainingSeconds { get; set; }
 }

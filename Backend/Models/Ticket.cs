@@ -11,11 +11,12 @@ public partial class Ticket
 
     public string? Status { get; set; }
 
-    public int? InvoiceId { get; set; }
+    public int? BookingId { get; set; }
 
     public int? ShowtimeSeatId { get; set; }
 
-    public virtual Invoice? Invoice { get; set; }
+    public virtual Booking? Booking { get; set; }
+    public virtual ICollection<InvoiceDetail> InvoiceDetails { get; set; } = new List<InvoiceDetail>();
 
     public virtual ShowtimeSeat? ShowtimeSeat { get; set; }
 }

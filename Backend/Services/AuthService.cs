@@ -104,9 +104,10 @@ public class AuthService
                 "Could not retrieve the registered account.");
         }
 
+        var registeredUserId = Convert.ToInt32(reader["UserID"]);
         var user = new
         {
-            userId = Convert.ToInt32(reader["UserID"]),
+            userId = registeredUserId,
             fullName = reader["FullName"] as string,
             phone = reader["Phone"] as string,
             email = reader["Email"] as string,
@@ -118,6 +119,13 @@ public class AuthService
                 : reader["Gender"] as string,
             role = reader["Role"] as string
         };
+
+        await reader.DisposeAsync();
+
+        await using var customerCommand = new SqlCommand(
+            "INSERT INTO dbo.Customer (UserID) VALUES (@UserID);", connection);
+        customerCommand.Parameters.Add("@UserID", SqlDbType.Int).Value = registeredUserId;
+        await customerCommand.ExecuteNonQueryAsync();
 
         return (true, "Registration successful", user);
     }

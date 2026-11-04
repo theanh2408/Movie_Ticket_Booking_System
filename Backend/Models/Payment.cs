@@ -17,7 +17,7 @@ public partial class Payment
 
     public DateTime? PaymentDate { get; set; }
 
-    public int? InvoiceId { get; set; }
+    public int? BookingId { get; set; }
 
-    public virtual Invoice? Invoice { get; set; }
+    public virtual Booking? Booking { get; set; }
 }

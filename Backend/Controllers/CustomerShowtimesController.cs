@@ -213,15 +213,16 @@ public class CustomerShowtimesController : ControllerBase
                 // 2. HELD: active and unexpired payment attempt
                 // 3. Original seat status
                 status = _context.Tickets.Any(t =>
-                    t.ShowtimeSeatId == ss.ShowtimeSeatId)
+                    t.ShowtimeSeatId == ss.ShowtimeSeatId &&
+                    t.Status == "VALID")
                     ? "BOOKED"
 
-                    : _context.PaymentAttemptSeats.Any(pas =>
-                        pas.ShowtimeSeatId == ss.ShowtimeSeatId &&
-                        pas.IsActive &&
-                        pas.PaymentAttempt != null &&
-                        pas.PaymentAttempt.Status == "PENDING" &&
-                        pas.PaymentAttempt.ExpiresAt > now)
+                    : _context.Tickets.Any(t =>
+                        t.ShowtimeSeatId == ss.ShowtimeSeatId &&
+                        t.Status == "HELD" &&
+                        t.Booking != null &&
+                        t.Booking.Status == "PENDING" &&
+                        t.Booking.ExpiredAt > now)
                         ? "HELD"
 
                         : ss.Status,

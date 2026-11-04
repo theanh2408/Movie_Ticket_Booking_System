@@ -18,19 +18,25 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<Account> Accounts { get; set; }
 
+    public virtual DbSet<Booking> Bookings { get; set; }
+
+    public virtual DbSet<BookingPromotion> BookingPromotions { get; set; }
+
+    public virtual DbSet<Customer> Customers { get; set; }
+
     public virtual DbSet<Cinema> Cinemas { get; set; }
 
     public virtual DbSet<Genre> Genres { get; set; }
 
     public virtual DbSet<Invoice> Invoices { get; set; }
 
+    public virtual DbSet<InvoiceDetail> InvoiceDetails { get; set; }
+
     public virtual DbSet<Movie> Movies { get; set; }
 
     public virtual DbSet<Payment> Payments { get; set; }
 
-    public virtual DbSet<PaymentAttempt> PaymentAttempts { get; set; }
-
-    public virtual DbSet<PaymentAttemptSeat> PaymentAttemptSeats { get; set; }
+    public virtual DbSet<Promotion> Promotions { get; set; }
 
     public virtual DbSet<Room> Rooms { get; set; }
 
@@ -60,6 +66,50 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.Role).HasMaxLength(50);
         });
 
+        modelBuilder.Entity<Booking>(entity =>
+        {
+            entity.ToTable("Booking");
+            entity.Property(e => e.BookingId).HasColumnName("BookingID");
+            entity.Property(e => e.CustomerId).HasColumnName("CustomerID");
+            entity.Property(e => e.CreatedDate).HasColumnType("datetime");
+            entity.Property(e => e.ExpiredAt).HasColumnType("datetime");
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.SubTotal).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Status).HasMaxLength(50).IsUnicode(false);
+            entity.HasOne(e => e.Customer).WithMany(e => e.Bookings)
+                .HasForeignKey(e => e.CustomerId)
+                .HasConstraintName("FK_Booking_Customer");
+        });
+
+        modelBuilder.Entity<BookingPromotion>(entity =>
+        {
+            entity.ToTable("Booking_Promotion");
+            entity.HasKey(e => e.BookingPromotionId);
+            entity.Property(e => e.BookingPromotionId).HasColumnName("BookingPromotionID");
+            entity.Property(e => e.BookingId).HasColumnName("BookingID");
+            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.AppliedAt).HasColumnType("datetime");
+            entity.HasOne(e => e.Booking).WithMany(e => e.BookingPromotions)
+                .HasForeignKey(e => e.BookingId)
+                .HasConstraintName("FK_BookingPromotion_Booking");
+            entity.HasOne(e => e.Promotion).WithMany(e => e.BookingPromotions)
+                .HasForeignKey(e => e.PromotionId)
+                .HasConstraintName("FK_BookingPromotion_Promotion");
+        });
+
+        modelBuilder.Entity<Customer>(entity =>
+        {
+            entity.ToTable("Customer");
+            entity.HasIndex(e => e.UserId).IsUnique().HasDatabaseName("UQ_Customer_User");
+            entity.Property(e => e.CustomerId).HasColumnName("CustomerID");
+            entity.Property(e => e.UserId).HasColumnName("UserID");
+            entity.HasOne(e => e.User).WithOne(e => e.Customer)
+                .HasForeignKey<Customer>(e => e.UserId)
+                .HasConstraintName("FK_Customer_Account");
+        });
+
         modelBuilder.Entity<Cinema>(entity =>
         {
             entity.ToTable("Cinema");
@@ -82,14 +132,29 @@ public partial class ApplicationDbContext : DbContext
         {
             entity.ToTable("Invoice");
 
-            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceID");
             entity.Property(e => e.CreateDate).HasColumnType("datetime");
             entity.Property(e => e.Status).HasMaxLength(50);
-            entity.Property(e => e.UserId).HasColumnName("UserID");
+            entity.Property(e => e.TotalPrice).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.BookingId).HasColumnName("BookingID");
+            entity.HasIndex(e => e.BookingId).IsUnique().HasDatabaseName("UQ_Invoice_Booking");
+            entity.HasOne(e => e.Booking).WithOne(e => e.Invoice)
+                .HasForeignKey<Invoice>(e => e.BookingId)
+                .HasConstraintName("FK_Invoice_Booking");
+        });
 
-            entity.HasOne(d => d.User).WithMany(p => p.Invoices)
-                .HasForeignKey(d => d.UserId)
-                .HasConstraintName("FK_Invoice_Account");
+        modelBuilder.Entity<InvoiceDetail>(entity =>
+        {
+            entity.HasKey(e => e.DetailId);
+            entity.ToTable("Invoice_Detail");
+            entity.Property(e => e.DetailId).HasColumnName("DetailID");
+            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceID");
+            entity.Property(e => e.TicketId).HasColumnName("TicketID");
+            entity.HasOne(e => e.Invoice).WithMany(e => e.InvoiceDetails)
+                .HasForeignKey(e => e.InvoiceId)
+                .HasConstraintName("FK_InvoiceDetail_Invoice");
+            entity.HasOne(e => e.Ticket).WithMany(e => e.InvoiceDetails)
+                .HasForeignKey(e => e.TicketId)
+                .HasConstraintName("FK_InvoiceDetail_Ticket");
         });
 
         modelBuilder.Entity<Movie>(entity =>
@@ -133,110 +198,31 @@ public partial class ApplicationDbContext : DbContext
 
             entity.Property(e => e.PaymentId).HasColumnName("PaymentID");
             entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceID");
+            entity.Property(e => e.BookingId).HasColumnName("BookingID");
             entity.Property(e => e.PaymentDate).HasColumnType("datetime");
             entity.Property(e => e.PaymentMethod).HasMaxLength(50);
             entity.Property(e => e.PaymentStatus).HasMaxLength(50);
             entity.Property(e => e.TransactionNo).HasMaxLength(100);
 
-            entity.HasOne(d => d.Invoice).WithMany(p => p.Payments)
-                .HasForeignKey(d => d.InvoiceId)
-                .HasConstraintName("FK_Payment_Invoice");
+            entity.HasOne(d => d.Booking).WithMany(p => p.Payments)
+                .HasForeignKey(d => d.BookingId)
+                .HasConstraintName("FK_Payment_Booking");
         });
 
-
-        modelBuilder.Entity<PaymentAttempt>(entity =>
+        modelBuilder.Entity<Promotion>(entity =>
         {
-            entity.ToTable("PaymentAttempt");
-
-            entity.HasKey(e => e.PaymentAttemptId);
-
-            entity.Property(e => e.PaymentAttemptId)
-                .HasColumnName("PaymentAttemptID");
-
-            entity.Property(e => e.UserId)
-                .HasColumnName("UserID");
-
-            entity.Property(e => e.ShowtimeId)
-                .HasColumnName("ShowtimeID");
-
-            entity.Property(e => e.Amount)
-                .HasColumnType("decimal(18, 2)");
-
-            entity.Property(e => e.Status)
-                .HasMaxLength(20)
-                .HasDefaultValue("PENDING");
-
-            entity.Property(e => e.CreatedAt)
-                .HasColumnType("datetime2")
-                .HasDefaultValueSql("SYSUTCDATETIME()");
-
-            entity.Property(e => e.ExpiresAt)
-                .HasColumnType("datetime2");
-
-            entity.Property(e => e.CompletedAt)
-                .HasColumnType("datetime2");
-
-            entity.Property(e => e.IdempotencyKey)
-                .HasColumnName("IdempotencyKey");
-
-            entity.HasIndex(e => new { e.UserId, e.IdempotencyKey })
-                .IsUnique()
-                .HasDatabaseName("UQ_PaymentAttempt_User_Idempotency");
-
-            entity.HasIndex(e => new { e.Status, e.ExpiresAt })
-                .HasDatabaseName("IX_PaymentAttempt_Status_ExpiresAt");
-
-            entity.HasOne<Account>()
-                .WithMany()
-                .HasForeignKey(e => e.UserId)
-                .HasConstraintName("FK_PaymentAttempt_Account");
-
-            entity.HasOne<Showtime>()
-                .WithMany()
-                .HasForeignKey(e => e.ShowtimeId)
-                .HasConstraintName("FK_PaymentAttempt_Showtime");
-
-            entity.HasMany(e => e.PaymentAttemptSeats)
-                .WithOne(e => e.PaymentAttempt)
-                .HasForeignKey(e => e.PaymentAttemptId)
-                .HasConstraintName("FK_PaymentAttemptSeat_Attempt");
+            entity.ToTable("Promotion");
+            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
+            entity.Property(e => e.Code).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.PromotionName).HasMaxLength(255);
+            entity.Property(e => e.DiscountType).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.DiscountValue).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.MinOrderAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.MaxDiscountAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.StartDate).HasColumnType("datetime");
+            entity.Property(e => e.EndDate).HasColumnType("datetime");
+            entity.Property(e => e.Status).HasMaxLength(50).IsUnicode(false);
         });
-
-
-        modelBuilder.Entity<PaymentAttemptSeat>(entity =>
-        {
-            entity.ToTable("PaymentAttemptSeat");
-
-            entity.HasKey(e => new
-            {
-                e.PaymentAttemptId,
-                e.ShowtimeSeatId
-            });
-
-            entity.Property(e => e.PaymentAttemptId)
-                .HasColumnName("PaymentAttemptID");
-
-            entity.Property(e => e.ShowtimeSeatId)
-                .HasColumnName("Showtime_SeatID");
-
-            entity.Property(e => e.Price)
-                .HasColumnType("decimal(18, 2)");
-
-            entity.Property(e => e.IsActive)
-                .HasDefaultValue(true);
-
-            entity.HasIndex(e => e.ShowtimeSeatId)
-                .IsUnique()
-                .HasFilter("[IsActive] = 1")
-                .HasDatabaseName("UQ_PaymentAttemptSeat_Active");
-
-            entity.HasOne(e => e.ShowtimeSeat)
-                .WithMany()
-                .HasForeignKey(e => e.ShowtimeSeatId)
-                .HasConstraintName("FK_PaymentAttemptSeat_ShowtimeSeat");
-        });
-
 
         modelBuilder.Entity<Room>(entity =>
         {
@@ -312,14 +298,14 @@ public partial class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ShowtimeSeatId, "UQ_Ticket_ShowtimeSeat").IsUnique();
 
             entity.Property(e => e.TicketId).HasColumnName("TicketID");
-            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceID");
+            entity.Property(e => e.BookingId).HasColumnName("Booking_ID");
             entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ShowtimeSeatId).HasColumnName("Showtime_SeatID");
             entity.Property(e => e.Status).HasMaxLength(50);
 
-            entity.HasOne(d => d.Invoice).WithMany(p => p.Tickets)
-                .HasForeignKey(d => d.InvoiceId)
-                .HasConstraintName("FK_Ticket_Invoice");
+            entity.HasOne(d => d.Booking).WithMany(p => p.Tickets)
+                .HasForeignKey(d => d.BookingId)
+                .HasConstraintName("FK_Ticket_Booking");
 
             entity.HasOne(d => d.ShowtimeSeat).WithOne(p => p.Ticket)
                 .HasForeignKey<Ticket>(d => d.ShowtimeSeatId)

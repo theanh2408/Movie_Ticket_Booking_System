@@ -19,11 +19,23 @@ public class CustomerMoviesController : ControllerBase
     // GET: /api/movies
     [HttpGet]
     public async Task<IActionResult> GetMovies(
+        [FromQuery] string? name,
+        [FromQuery] string? status,
+        [FromQuery] int? genreId,
         CancellationToken cancellationToken)
     {
-        var movies = await _context.Movies
+        var query = _context.Movies
             .AsNoTracking()
-            .Include(m => m.Genres)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(name))
+            query = query.Where(m => m.Title != null && m.Title.Contains(name.Trim()));
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(m => m.Status == status.Trim());
+        if (genreId.HasValue)
+            query = query.Where(m => m.Genres.Any(g => g.GenreId == genreId.Value));
+
+        var movies = await query
             .Select(m => new
             {
                 movieId = m.MovieId,
