@@ -16,4 +16,8 @@ public class PaymentAttemptResponse
     public DateTime ExpiresAt { get; set; }
 
     public int RemainingSeconds { get; set; }
+
+    public string? QrToken { get; set; }
+
+    public List<string> Barcodes { get; set; } = new();
 }

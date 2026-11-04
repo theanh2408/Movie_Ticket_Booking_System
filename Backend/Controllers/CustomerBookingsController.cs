@@ -69,7 +69,7 @@ public class CustomerBookingsController : ControllerBase
 
         var booking = await _context.Bookings.AsNoTracking()
             .Where(b => b.BookingId == bookingId && b.CustomerId == customerId)
-            .Include(b => b.Payments).Include(b => b.Tickets)
+            .Include(b => b.Payments).Include(b => b.BookingQRs).Include(b => b.Tickets)
             .FirstOrDefaultAsync(cancellationToken);
         if (booking == null) return NotFound(new { success = false, message = "Không tìm thấy đơn đặt vé." });
 
@@ -88,7 +88,9 @@ public class CustomerBookingsController : ControllerBase
                 expiresAt = booking.ExpiredAt,
                 remainingSeconds,
                 paymentStatus = booking.Payments.OrderByDescending(p => p.PaymentDate).Select(p => p.PaymentStatus).FirstOrDefault(),
-                ticketIds = booking.Tickets.Select(t => t.TicketId).ToList()
+                qrToken = booking.BookingQRs.Where(q => q.Status == "Active").Select(q => q.Token).FirstOrDefault(),
+                ticketIds = booking.Tickets.Select(t => t.TicketId).ToList(),
+                barcodes = booking.Tickets.Select(t => t.Barcode).ToList()
             },
             message = "Lấy thông tin đơn đặt vé thành công."
         });
@@ -102,7 +104,7 @@ public class CustomerBookingsController : ControllerBase
 
         var bookings = await _context.Bookings.AsNoTracking().Where(b => b.CustomerId == customerId)
             .Where(b => b.Payments.Any(p => p.PaymentStatus == "SUCCESS"))
-            .Include(b => b.Payments).Include(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat).ThenInclude(s => s!.Showtime).ThenInclude(s => s!.Movie)
+            .Include(b => b.Payments).Include(b => b.BookingQRs).Include(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat).ThenInclude(s => s!.Showtime).ThenInclude(s => s!.Movie)
             .OrderByDescending(b => b.CreatedDate)
             .Select(b => new
             {
@@ -112,11 +114,13 @@ public class CustomerBookingsController : ControllerBase
                 totalAmount = b.TotalAmount,
                 paymentStatus = b.Payments.Where(p => p.PaymentStatus == "SUCCESS").Select(p => p.PaymentStatus).FirstOrDefault(),
                 paymentDate = b.Payments.Where(p => p.PaymentStatus == "SUCCESS").Select(p => p.PaymentDate).FirstOrDefault(),
+                qrToken = b.BookingQRs.Where(q => q.Status == "Active").Select(q => q.Token).FirstOrDefault(),
                 tickets = b.Tickets.Select(t => new
                 {
                     ticketId = t.TicketId,
                     price = t.Price,
                     status = t.Status,
+                    barcode = t.Barcode,
                     seatId = t.ShowtimeSeat!.SeatId,
                     showtimeId = t.ShowtimeSeat.ShowtimeId,
                     movieId = t.ShowtimeSeat.Showtime!.MovieId,

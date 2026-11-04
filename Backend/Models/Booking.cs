@@ -15,4 +15,5 @@ public class Booking
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
     public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
     public ICollection<BookingPromotion> BookingPromotions { get; set; } = new List<BookingPromotion>();
+    public ICollection<BookingQR> BookingQRs { get; set; } = new List<BookingQR>();
 }

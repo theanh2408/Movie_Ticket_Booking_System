@@ -14,6 +14,7 @@ public partial class Ticket
     public int? BookingId { get; set; }
 
     public int? ShowtimeSeatId { get; set; }
+    public string? Barcode { get; set; }
 
     public virtual Booking? Booking { get; set; }
     public virtual ICollection<InvoiceDetail> InvoiceDetails { get; set; } = new List<InvoiceDetail>();

@@ -98,12 +98,17 @@ public class CustomerBillingController : ControllerBase
             return NotFound(new { success = false, message = "Không tìm thấy khách hàng." });
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        var booking = await _context.Bookings.Include(b => b.Invoice).Include(b => b.Tickets)
+        var booking = await _context.Bookings.Include(b => b.Invoice).Include(b => b.BookingQRs).Include(b => b.Tickets)
             .Include(b => b.Payments)
             .FirstOrDefaultAsync(b => b.BookingId == bookingId && b.CustomerId == customerId, cancellationToken);
         if (booking == null) return NotFound(new { success = false, message = "Không tìm thấy đơn đặt vé." });
         var payment = booking.Payments.Where(p => p.PaymentStatus == "SUCCESS").OrderByDescending(p => p.PaymentDate).FirstOrDefault();
         if (payment == null) return Conflict(new { success = false, message = "Chỉ được tạo hóa đơn sau khi thanh toán thành công." });
+
+        foreach (var ticket in booking.Tickets.Where(t => string.IsNullOrWhiteSpace(t.Barcode)))
+            ticket.Barcode = $"TKT-{Guid.NewGuid():N}";
+        if (!booking.BookingQRs.Any(q => q.Status == "Active"))
+            _context.BookingQRs.Add(new BookingQR { BookingId = booking.BookingId, Token = $"BOOKING-{Guid.NewGuid():N}", Status = "Active" });
 
         var invoice = booking.Invoice;
         if (invoice == null)
@@ -134,6 +139,7 @@ public class CustomerBillingController : ControllerBase
                 createDate = invoice.CreateDate,
                 status = invoice.Status,
                 totalPrice = invoice.TotalPrice,
+                qrToken = booking.BookingQRs.Where(q => q.Status == "Active").Select(q => q.Token).FirstOrDefault(),
                 ticketIds = booking.Tickets.Select(t => t.TicketId).ToList()
             },
             message = "Tạo hóa đơn thành công."

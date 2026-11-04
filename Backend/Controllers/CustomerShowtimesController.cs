@@ -214,7 +214,7 @@ public class CustomerShowtimesController : ControllerBase
                 // 3. Original seat status
                 status = _context.Tickets.Any(t =>
                     t.ShowtimeSeatId == ss.ShowtimeSeatId &&
-                    t.Status == "VALID")
+                    (t.Status == "VALID" || t.Status == "PRINTED"))
                     ? "BOOKED"
 
                     : _context.Tickets.Any(t =>

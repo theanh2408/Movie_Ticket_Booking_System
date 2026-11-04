@@ -82,17 +82,34 @@ public class PaymentService
         booking.Status = "PAID";
         _context.Invoices.Add(invoice);
         _context.Payments.Add(new Payment { BookingId = booking.BookingId, Amount = booking.TotalAmount, PaymentMethod = "MOCK", PaymentStatus = "SUCCESS", PaymentDate = now, TransactionNo = $"MOCK-{Guid.NewGuid():N}" });
-        foreach (var ticket in booking.Tickets) ticket.Status = "VALID";
+        foreach (var ticket in booking.Tickets)
+        {
+            ticket.Status = "VALID";
+            ticket.Barcode = $"TKT-{Guid.NewGuid():N}";
+        }
+        var qrToken = $"BOOKING-{Guid.NewGuid():N}";
+        _context.BookingQRs.Add(new BookingQR
+        {
+            BookingId = booking.BookingId,
+            Token = qrToken,
+            Status = "Active"
+        });
         await _context.SaveChangesAsync();
         _context.InvoiceDetails.AddRange(booking.Tickets.Select(t => new InvoiceDetail { InvoiceId = invoice.InvoiceId, TicketId = t.TicketId }));
         await _context.SaveChangesAsync(); await transaction.CommitAsync();
-        return ToResponse(booking, showtimeId, seatIds);
+        var response = ToResponse(booking, showtimeId, seatIds);
+        response.QrToken = qrToken;
+        response.Barcodes = booking.Tickets.Where(t => !string.IsNullOrWhiteSpace(t.Barcode)).Select(t => t.Barcode!).ToList();
+        return response;
     }
 
     private async Task<PaymentAttemptResponse> GetResponseAsync(int bookingId)
     {
-        var booking = await _context.Bookings.Include(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat).FirstOrDefaultAsync(b => b.BookingId == bookingId) ?? throw new KeyNotFoundException("Không tìm thấy lượt thanh toán.");
-        return ToResponse(booking, booking.Tickets.FirstOrDefault()?.ShowtimeSeat?.ShowtimeId ?? 0, booking.Tickets.Where(t => t.ShowtimeSeat?.SeatId != null).Select(t => t.ShowtimeSeat!.SeatId!.Value).ToList());
+        var booking = await _context.Bookings.Include(b => b.BookingQRs).Include(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat).FirstOrDefaultAsync(b => b.BookingId == bookingId) ?? throw new KeyNotFoundException("Không tìm thấy lượt thanh toán.");
+        var response = ToResponse(booking, booking.Tickets.FirstOrDefault()?.ShowtimeSeat?.ShowtimeId ?? 0, booking.Tickets.Where(t => t.ShowtimeSeat?.SeatId != null).Select(t => t.ShowtimeSeat!.SeatId!.Value).ToList());
+        response.QrToken = booking.BookingQRs.Where(q => q.Status == "Active").Select(q => q.Token).FirstOrDefault();
+        response.Barcodes = booking.Tickets.Where(t => !string.IsNullOrWhiteSpace(t.Barcode)).Select(t => t.Barcode!).ToList();
+        return response;
     }
 
     private static PaymentAttemptResponse ToResponse(Booking booking, int showtimeId, List<int> seatIds) => new()

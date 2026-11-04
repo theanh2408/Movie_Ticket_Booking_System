@@ -22,6 +22,8 @@ public partial class ApplicationDbContext : DbContext
 
     public virtual DbSet<BookingPromotion> BookingPromotions { get; set; }
 
+    public virtual DbSet<BookingQR> BookingQRs { get; set; }
+
     public virtual DbSet<Customer> Customers { get; set; }
 
     public virtual DbSet<Cinema> Cinemas { get; set; }
@@ -97,6 +99,20 @@ public partial class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Promotion).WithMany(e => e.BookingPromotions)
                 .HasForeignKey(e => e.PromotionId)
                 .HasConstraintName("FK_BookingPromotion_Promotion");
+        });
+
+        modelBuilder.Entity<BookingQR>(entity =>
+        {
+            entity.ToTable("BookingQR");
+            entity.HasKey(e => e.QrId);
+            entity.Property(e => e.QrId).HasColumnName("QRID");
+            entity.Property(e => e.BookingId).HasColumnName("BookingID");
+            entity.Property(e => e.Token).HasMaxLength(128).IsUnicode(false);
+            entity.Property(e => e.Status).HasMaxLength(20).IsUnicode(false);
+            entity.HasIndex(e => e.Token).IsUnique().HasDatabaseName("UQ_BookingQR_Token");
+            entity.HasOne(e => e.Booking).WithMany(e => e.BookingQRs)
+                .HasForeignKey(e => e.BookingId)
+                .HasConstraintName("FK_BookingQR_Booking");
         });
 
         modelBuilder.Entity<Customer>(entity =>
@@ -301,7 +317,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BookingId).HasColumnName("Booking_ID");
             entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ShowtimeSeatId).HasColumnName("Showtime_SeatID");
-            entity.Property(e => e.Status).HasMaxLength(50);
+            entity.Property(e => e.Status).HasMaxLength(100);
+            entity.Property(e => e.Barcode).HasMaxLength(128).IsUnicode(false);
+            entity.HasIndex(e => e.Barcode).IsUnique().HasDatabaseName("UX_Ticket_Barcode");
 
             entity.HasOne(d => d.Booking).WithMany(p => p.Tickets)
                 .HasForeignKey(d => d.BookingId)
