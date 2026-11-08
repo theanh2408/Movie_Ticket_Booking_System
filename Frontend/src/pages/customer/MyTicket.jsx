@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { cn } from '../../lib/cn';
 
@@ -60,103 +60,6 @@ const getCurrentFormattedTime = () => {
   return `${d}/${m}/${y} ${h}:${min}`;
 };
 
-// ==========================================================================
-// 2. MOCK DATA TĨNH: Chứa vé > 120 phút, < 120 phút, đã xem và đã hủy
-// ==========================================================================
-export const getInitialMockTickets = () => {
-  const now = Date.now();
-  return [
-    {
-      id: 'ticket-up-01',
-      bookingCode: 'CT-982410',
-      movieTitle: 'Đất Rừng Phương Nam: Huyền Thoại Trở Lại',
-      moviePoster:
-        'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80',
-      theaterName: 'Vibe Cinema Royal Mall (Quận 1)',
-      theaterAddress: 'Tầng 5, TTTM Royal Mall, 182 Lê Thánh Tôn, P. Bến Nghé, Quận 1, TP.HCM',
-      roomName: 'Phòng Chiếu 1 (IMAX Laser)',
-      format: 'IMAX 3D Laser',
-      // Suất chiếu sau 5 giờ (300 phút > 120 phút) -> ĐỦ ĐIỀU KIỆN HỦY VÉ
-      showDateTime: new Date(now + 5 * 3600 * 1000).toISOString(),
-      showDate: 'Hôm nay (26/10/2026)',
-      showTime: '20:15',
-      seats: ['F07', 'F08'],
-      totalPrice: 220000,
-      bookingDate: '26/10/2026 14:30',
-      status: 'upcoming', // Phim sắp xem
-      paymentMethod: 'Ví MoMo',
-      qrValue: 'VIBECINEMA_QR_CT982410_ROYAL_IMAX_F07_F08',
-      barcodeValue: '982410772189',
-    },
-    {
-      id: 'ticket-up-02',
-      bookingCode: 'CT-831490',
-      movieTitle: 'Dune: Biên Niên Sử Cát Vàng',
-      moviePoster:
-        'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80',
-      theaterName: 'Vibe Cinema Landmark (Bình Thạnh)',
-      theaterAddress:
-        'Tầng B1, Vincom Center Landmark 81, 720A Điện Biên Phủ, P.22, Bình Thạnh',
-      roomName: 'Phòng Chiếu 3 (Dolby Atmos)',
-      format: '2D Dolby Atmos Phụ Đề',
-      // Suất chiếu sau 45 phút (45 phút < 120 phút) -> KHÔNG ĐỦ ĐIỀU KIỆN (BỊ CHẶN HỦY)
-      showDateTime: new Date(now + 45 * 60 * 1000).toISOString(),
-      showDate: 'Hôm nay (26/10/2026)',
-      showTime: '01:55',
-      seats: ['G12', 'G13'],
-      totalPrice: 190000,
-      bookingDate: '26/10/2026 10:15',
-      status: 'upcoming', // Phim sắp xem
-      paymentMethod: 'Thẻ Quốc Tế (Visa/Mastercard)',
-      qrValue: 'VIBECINEMA_QR_CT831490_LANDMARK_G12_G13',
-      barcodeValue: '831490126743',
-    },
-    {
-      id: 'ticket-wt-01',
-      bookingCode: 'CT-762104',
-      movieTitle: 'Thám Tử Lừng Danh: Mật Mã Tokyo',
-      moviePoster:
-        'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80',
-      theaterName: 'Vibe Cinema Saigon Centre (Quận 1)',
-      theaterAddress: 'Tầng L5-L6, Saigon Centre, 65 Lê Lợi, P. Bến Nghé, Quận 1, TP.HCM',
-      roomName: 'Phòng Chiếu 2',
-      format: '2D Lồng Tiếng Việt',
-      showDate: '18/10/2026',
-      showTime: '18:30',
-      seats: ['E05', 'E06'],
-      totalPrice: 180000,
-      bookingDate: '16/10/2026 09:20',
-      status: 'watched', // Phim đã xem
-      paymentMethod: 'Ví VNPAY-QR',
-      qrValue: 'VIBECINEMA_QR_CT762104_SAIGON_E05_E06',
-      barcodeValue: '762104554321',
-    },
-    {
-      id: 'ticket-ca-01',
-      bookingCode: 'CT-615290',
-      movieTitle: 'Băng Đảng Báo Đen: Khởi Tố',
-      moviePoster:
-        'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=800&auto=format&fit=crop&q=80',
-      theaterName: 'Vibe Cinema Ba Tháng Hai (Quận 10)',
-      theaterAddress: 'Số 3/2, Phường 12, Quận 10, TP.HCM',
-      roomName: 'Phòng Chiếu 4DX',
-      format: '4DX Extreme',
-      showDate: '12/10/2026',
-      showTime: '21:30',
-      seats: ['H09'],
-      totalPrice: 150000,
-      bookingDate: '11/10/2026 16:45',
-      cancelledDate: '11/10/2026 18:30',
-      status: 'cancelled', // Phim đã hủy
-      cancelReason: 'Thay đổi lịch trình cá nhân đột xuất.',
-      refundStatus: 'Đã hoàn tiền',
-      paymentMethod: 'Ví MoMo',
-      qrValue: 'VIBECINEMA_QR_CT615290_32_4DX_H09',
-      barcodeValue: '615290981240',
-    },
-  ];
-};
-
 // 4 Lý do hủy vé chuẩn theo nghiệp vụ
 export const CANCELLATION_REASONS = [
   'Thay đổi lịch trình cá nhân đột xuất.',
@@ -166,10 +69,30 @@ export const CANCELLATION_REASONS = [
 ];
 
 export const MyTicket = () => {
+  const navigate = useNavigate();
+
+  // Kiểm tra đăng nhập: Chưa đăng nhập thì chuyển hướng về trang Login
+  useEffect(() => {
+    const token =
+      localStorage.getItem(import.meta.env?.VITE_AUTH_TOKEN_KEY || 'vibe_cinema_access_token') ||
+      localStorage.getItem(import.meta.env?.VITE_AUTH_USER_KEY || 'vibe_cinema_user') ||
+      localStorage.getItem('Vibe Cinema_user');
+
+    if (!token) {
+      navigate('/login', {
+        state: {
+          returnUrl: '/my-tickets',
+          message: 'Vui lòng đăng nhập để xem vé đã đặt.',
+        },
+        replace: true,
+      });
+    }
+  }, [navigate]);
+
   // Tab hiện tại: 'upcoming' (Phim sắp xem) hoặc 'watched' (Phim đã xem / Đã hủy)
   const [activeTab, setActiveTab] = useState('upcoming');
 
-  // Danh sách vé (Load từ localStorage hoặc khởi tạo từ mock)
+  // Danh sách vé (Load từ localStorage thực tế của người dùng, mặc định rỗng nếu chưa đặt vé)
   const [tickets, setTickets] = useState(() => {
     try {
       const stored = localStorage.getItem('Vibe Cinema_tickets');
@@ -189,9 +112,9 @@ export const MyTicket = () => {
           });
         }
       }
-      return getInitialMockTickets();
+      return [];
     } catch {
-      return getInitialMockTickets();
+      return [];
     }
   });
 

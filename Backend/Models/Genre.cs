@@ -1,13 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Backend.Models;
 
-public partial class Genre
+[Table("Genre")]
+public class Genre
 {
+    [Key]
+    [Column("Genre_ID")]
     public int GenreId { get; set; }
 
+    [MaxLength(100)]
     public string? GenreName { get; set; }
 
-    public virtual ICollection<Movie> Movies { get; set; } = new List<Movie>();
+    public virtual ICollection<MovieGenre> MovieGenres { get; set; } = new List<MovieGenre>();
 }

@@ -14,6 +14,7 @@ import Checkout from './pages/customer/Checkout';
 import AccountProfile from './pages/customer/AccountProfile';
 import MyTicket from './pages/customer/MyTicket';
 import NowShowing from './pages/customer/NowShowing';
+import ComingSoon from './pages/customer/ComingSoon';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         {/* Customer & Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/now-showing" element={<NowShowing />} />
+        <Route path="/coming-soon" element={<ComingSoon />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/movie/:id" element={<MovieDetail />} />

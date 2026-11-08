@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { Button } from '../../components/Button';
-import { INITIAL_TICKETS } from '../../assets/mockData';
+
 
 export const Checkout = () => {
   const location = useLocation();
@@ -121,7 +121,7 @@ export const Checkout = () => {
 
       try {
         const stored = localStorage.getItem('Vibe Cinema_tickets');
-        const list = stored ? JSON.parse(stored) : INITIAL_TICKETS;
+        const list = stored ? JSON.parse(stored) : [];
         const updated = [newTicket, ...list];
         localStorage.setItem('Vibe Cinema_tickets', JSON.stringify(updated));
 

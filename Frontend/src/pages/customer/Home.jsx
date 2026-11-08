@@ -1,53 +1,58 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { MovieCard } from '../../components/MovieCard';
-import { MOVIES, GENRES, THEATERS } from '../../assets/mockData';
+import { useMovies } from '../../hooks/useMovies';
+import cinemaApi from '../../api/cinemaApi';
 import { cn } from '../../lib/cn';
 
 export const Home = () => {
   const [statusTab, setStatusTab] = useState('now-showing'); // 'now-showing' | 'coming-soon'
-  const [selectedGenre, setSelectedGenre] = useState('Tất cả thể loại');
+  const [selectedGenreId, setSelectedGenreId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('hot');
+  const [cinemas, setCinemas] = useState([]);
 
-  // Featured Hero movie (top 1 now showing)
-  const heroMovie = MOVIES[0];
+  // Sử dụng custom hook useMovies kết nối với Backend .NET
+  const {
+    items: movies,
+    genres,
+    loading,
+    error,
+    refetch,
+  } = useMovies({
+    status: statusTab === 'now-showing' ? 'NOW_SHOWING' : 'COMING_SOON',
+    search: searchQuery,
+    genreId: selectedGenreId,
+  });
 
-  const filteredMovies = useMemo(() => {
-    return MOVIES.filter((m) => {
-      // Status filter
-      if (statusTab === 'now-showing' && m.status !== 'now-showing') return false;
-      if (statusTab === 'coming-soon' && m.status !== 'coming-soon') return false;
-
-      // Genre filter
-      if (selectedGenre !== 'Tất cả thể loại') {
-        const matchesGenre = m.genres.some((g) =>
-          g.toLowerCase().includes(selectedGenre.toLowerCase())
-        );
-        if (!matchesGenre) return false;
+  // Tải danh sách rạp từ Backend cho khu vực Highlight
+  useEffect(() => {
+    const fetchCinemas = async () => {
+      try {
+        const res = await cinemaApi.getCinemas();
+        if (res && res.data) {
+          setCinemas(res.data);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải danh sách rạp:', err);
       }
+    };
+    fetchCinemas();
+  }, []);
 
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchesTitle = m.title.toLowerCase().includes(q);
-        const matchesDirector = m.director?.toLowerCase().includes(q);
-        const matchesCast = m.cast?.some((c) => c.toLowerCase().includes(q));
-        if (!matchesTitle && !matchesDirector && !matchesCast) return false;
-      }
+  // Lấy phim nổi bật cho Hero Banner
+  const heroMovie = movies.length > 0 ? movies[0] : null;
 
-      return true;
-    }).sort((a, b) => {
-      if (sortBy === 'rating') return b.rating - a.rating;
-      if (sortBy === 'duration') return b.duration - a.duration;
+  // Lọc và sắp xếp phía client nếu cần thêm tiêu chí bổ sung
+  const sortedMovies = useMemo(() => {
+    return [...movies].sort((a, b) => {
+      if (sortBy === 'rating') return (b.rating || 0) - (a.rating || 0);
+      if (sortBy === 'duration') return (b.duration || 0) - (a.duration || 0);
       if (sortBy === 'title') return a.title.localeCompare(b.title);
-      return 0; // default hot/release
+      return 0;
     });
-  }, [statusTab, selectedGenre, searchQuery, sortBy]);
-
-  const nowShowingCount = MOVIES.filter((m) => m.status === 'now-showing').length;
-  const comingSoonCount = MOVIES.filter((m) => m.status === 'coming-soon').length;
+  }, [movies, sortBy]);
 
   return (
     <MainLayout>
@@ -76,7 +81,7 @@ export const Home = () => {
                 </span>
                 <span className="text-tertiary-light text-xs tracking-wider uppercase font-semibold flex items-center gap-1">
                   <span className="size-2 rounded-full bg-sky-400 animate-pulse" />
-                  ĐANG CHIẾU TOÀN HỆ THỐNG
+                  {heroMovie.status === 'NOW_SHOWING' ? 'ĐANG CHIẾU TOÀN HỆ THỐNG' : 'SẮP KHỞI CHIẾU'}
                 </span>
               </div>
 
@@ -85,7 +90,7 @@ export const Home = () => {
               </h1>
 
               <p className="text-on-surface-variant text-sm lg:text-base max-w-2xl line-clamp-3 leading-relaxed">
-                {heroMovie.synopsis}
+                {heroMovie.synopsis || heroMovie.description}
               </p>
 
               <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-on-surface-variant text-xs sm:text-sm py-1">
@@ -104,15 +109,25 @@ export const Home = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
+                {heroMovie.status === 'NOW_SHOWING' ? (
+                  <Link
+                    to={`/movie/${heroMovie.movieId}/showtime`}
+                    className="px-6 py-3.5 rounded-xl bg-primary text-white font-headline text-base font-bold flex items-center gap-2 shadow-glow-primary-lg hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[22px]">confirmation_number</span>
+                    ĐẶT VÉ NGAY
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/movie/${heroMovie.movieId}`}
+                    className="px-6 py-3.5 rounded-xl bg-primary text-white font-headline text-base font-bold flex items-center gap-2 shadow-glow-primary-lg hover:scale-105 active:scale-95 transition-all"
+                  >
+                    <span className="material-symbols-outlined text-[22px]">info</span>
+                    XEM THÔNG TIN
+                  </Link>
+                )}
                 <Link
-                  to={`/movie/${heroMovie.id}/showtime`}
-                  className="px-6 py-3.5 rounded-xl bg-primary text-white font-headline text-base font-bold flex items-center gap-2 shadow-glow-primary-lg hover:scale-105 active:scale-95 transition-all"
-                >
-                  <span className="material-symbols-outlined text-[22px]">confirmation_number</span>
-                  ĐẶT VÉ NGAY
-                </Link>
-                <Link
-                  to={`/movie/${heroMovie.id}`}
+                  to={`/movie/${heroMovie.movieId}`}
                   className="px-6 py-3.5 rounded-xl bg-surface-high/80 backdrop-blur-md text-on-surface text-base font-medium flex items-center gap-2 hover:bg-surface-highest transition-all shadow-md"
                 >
                   <span className="material-symbols-outlined text-secondary text-[22px]">info</span>
@@ -131,22 +146,22 @@ export const Home = () => {
                   <div className="text-xs sm:text-sm font-semibold text-on-surface flex items-center gap-2">
                     Xu Hướng Đặt Vé Tuần Này
                     <span className="text-[10px] bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-bold">
-                      Top 1 Box Office
+                      Hệ Thống Rạp Hiện Đại
                     </span>
                   </div>
                   <div className="text-xs text-outline">
-                    Hơn 45.000 vé đã được giữ chỗ qua hệ thống Vibe Cinema
+                    Dữ liệu suất chiếu và giá vé cập nhật trực tiếp theo thời gian thực
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-                {THEATERS.slice(0, 3).map((t) => (
+                {cinemas.map((c) => (
                   <span
-                    key={t.id}
+                    key={c.cinemaId}
                     className="px-3 py-1.5 rounded-lg bg-surface-high text-on-surface text-xs whitespace-nowrap"
                   >
-                    {t.shortName}: <span className="text-secondary font-bold">Mở bán</span>
+                    {c.cinemaName}: <span className="text-secondary font-bold">Đang mở cửa</span>
                   </span>
                 ))}
               </div>
@@ -217,9 +232,8 @@ export const Home = () => {
           </div>
         </div>
       </section>
-      
-      {/* 3. FILTER & SEARCH BAR */}
 
+      {/* 3. FILTER & SEARCH BAR */}
       <section className="w-full px-4 sm:px-8 lg:px-12 py-5 bg-surface sticky top-20 z-40 border-y border-white/5 shadow-[0_12px_24px_rgba(0,0,0,0.6)] backdrop-blur-md">
         <div className="max-w-[1155px] mx-auto flex flex-col gap-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -237,16 +251,6 @@ export const Home = () => {
               >
                 <span className="material-symbols-outlined text-[18px]">theaters</span>
                 <span>Phim Đang Chiếu</span>
-                <span
-                  className={cn(
-                    'text-[10px] px-2 py-0.5 rounded-full',
-                    statusTab === 'now-showing'
-                      ? 'bg-surface-lowest text-white'
-                      : 'bg-surface-container text-outline'
-                  )}
-                >
-                  {nowShowingCount}
-                </span>
               </button>
               <button
                 onClick={() => setStatusTab('coming-soon')}
@@ -260,16 +264,6 @@ export const Home = () => {
               >
                 <span className="material-symbols-outlined text-[18px]">upcoming</span>
                 <span>Phim Sắp Chiếu</span>
-                <span
-                  className={cn(
-                    'text-[10px] px-2 py-0.5 rounded-full',
-                    statusTab === 'coming-soon'
-                      ? 'bg-surface-lowest text-white'
-                      : 'bg-surface-container text-outline'
-                  )}
-                >
-                  {comingSoonCount}
-                </span>
               </button>
             </div>
 
@@ -282,7 +276,7 @@ export const Home = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-surface-low text-on-surface placeholder:text-outline text-xs sm:text-sm pl-10 pr-9 py-2.5 rounded-xl border border-white/5 focus:outline-none focus:bg-surface-container focus:ring-1 focus:ring-primary transition-all"
-                placeholder="Tìm theo tên phim, diễn viên, đạo diễn..."
+                placeholder="Tìm theo tên phim..."
                 type="text"
               />
               {searchQuery && (
@@ -304,7 +298,7 @@ export const Home = () => {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-3 py-2 rounded-xl bg-surface-low text-on-surface text-xs font-semibold border border-white/5 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
               >
-                <option value="hot">Độ Hot Nhất</option>
+                <option value="hot">Mới nhất</option>
                 <option value="rating">Đánh giá cao nhất</option>
                 <option value="duration">Thời lượng dài nhất</option>
                 <option value="title">Tên phim A-Z</option>
@@ -314,21 +308,33 @@ export const Home = () => {
 
           {/* Genre Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {GENRES.map((genre) => {
-              const isActive = selectedGenre === genre;
+            <button
+              onClick={() => setSelectedGenreId(null)}
+              className={cn(
+                'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap',
+                selectedGenreId === null
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-surface-low hover:bg-surface-container text-outline hover:text-on-surface'
+              )}
+              type="button"
+            >
+              Tất cả thể loại
+            </button>
+            {genres.map((genre) => {
+              const isActive = selectedGenreId === genre.genreId;
               return (
                 <button
-                  key={genre}
-                  onClick={() => setSelectedGenre(genre)}
+                  key={genre.genreId}
+                  onClick={() => setSelectedGenreId(genre.genreId)}
                   className={cn(
                     'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap',
                     isActive
-                      ? 'bg-surface-high text-on-surface shadow-sm border border-white/10'
+                      ? 'bg-primary text-white shadow-sm'
                       : 'bg-surface-low hover:bg-surface-container text-outline hover:text-on-surface'
                   )}
                   type="button"
                 >
-                  {genre}
+                  {genre.name}
                 </button>
               );
             })}
@@ -351,7 +357,40 @@ export const Home = () => {
             </div>
           </div>
 
-          {filteredMovies.length === 0 ? (
+          {/* Loading Skeleton */}
+          {loading && (
+            <div className="grid grid-cols-[repeat(auto-fill,270px)] justify-center gap-[25px]">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="w-[270px] h-[480px] rounded-2xl bg-surface-low border border-white/5 animate-pulse flex flex-col p-4 space-y-3"
+                >
+                  <div className="w-full h-[320px] bg-white/5 rounded-xl" />
+                  <div className="h-4 bg-white/10 rounded w-3/4" />
+                  <div className="h-3 bg-white/5 rounded w-1/2" />
+                  <div className="h-8 bg-white/5 rounded-xl mt-auto" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error Message State */}
+          {!loading && error && (
+            <div className="py-16 text-center bg-surface-low/50 rounded-2xl border border-primary/20 space-y-3">
+              <span className="material-symbols-outlined text-[48px] text-primary">error</span>
+              <h3 className="text-base font-semibold text-on-surface">Không thể tải dữ liệu phim</h3>
+              <p className="text-xs text-outline max-w-md mx-auto">{error}</p>
+              <button
+                onClick={() => refetch()}
+                className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-dark text-xs font-bold text-white transition-colors cursor-pointer"
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!loading && !error && sortedMovies.length === 0 && (
             <div className="py-16 text-center bg-surface-low/50 rounded-2xl border border-white/5 space-y-3">
               <span className="material-symbols-outlined text-[48px] text-outline">movie_filter</span>
               <h3 className="text-base font-semibold text-on-surface">Không tìm thấy phim phù hợp</h3>
@@ -360,7 +399,7 @@ export const Home = () => {
               </p>
               <button
                 onClick={() => {
-                  setSelectedGenre('Tất cả thể loại');
+                  setSelectedGenreId(null);
                   setSearchQuery('');
                 }}
                 className="px-4 py-2 rounded-xl bg-surface-high hover:bg-surface-highest text-xs font-semibold text-on-surface transition-colors cursor-pointer"
@@ -368,19 +407,20 @@ export const Home = () => {
                 Xóa bộ lọc
               </button>
             </div>
-          ) : (
+          )}
+
+          {/* Movie Cards */}
+          {!loading && !error && sortedMovies.length > 0 && (
             <div className="grid grid-cols-[repeat(auto-fill,270px)] justify-center gap-[25px]">
-              {filteredMovies.map((movie) => (
-                <MovieCard key={movie.id} movie={movie} />
+              {sortedMovies.map((movie) => (
+                <MovieCard key={movie.movieId || movie.id} movie={movie} />
               ))}
             </div>
           )}
         </div>
       </section>
-
-      
-      
     </MainLayout>
   );
 };
+
 export default Home;

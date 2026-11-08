@@ -1,50 +1,149 @@
-import React, { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
-import { MOVIES, THEATERS, DATES } from '../../assets/mockData';
+import { useMovies } from '../../hooks/useMovies';
+import cinemaApi from '../../api/cinemaApi';
+import showtimeApi from '../../api/showtimeApi';
 import { cn } from '../../lib/cn';
+
+// Tạo danh sách 5 ngày liên tiếp
+const generateNextDates = () => {
+  const dates = [];
+  const today = new Date();
+
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    let label = `${day}/${month}`;
+    if (i === 0) label = `Hôm nay (${day}/${month})`;
+    else if (i === 1) label = `Ngày mai (${day}/${month})`;
+    else {
+      const weekdays = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+      label = `${weekdays[d.getDay()]} (${day}/${month})`;
+    }
+
+    dates.push({ id: dateStr, label });
+  }
+
+  return dates;
+};
 
 export const Showtime = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [selectedMovieId, setSelectedMovieId] = useState(id || MOVIES[0].id);
-  const [selectedTheaterId, setSelectedTheaterId] = useState(THEATERS[0].id);
-  const [selectedDate, setSelectedDate] = useState(DATES[0].label);
+  // 1. Lấy danh sách phim từ API
+  const { items: allMovies, loading: loadingMovies } = useMovies();
 
-  const selectedMovie = MOVIES.find((m) => m.id === selectedMovieId) || MOVIES[0];
-  const selectedTheater = THEATERS.find((t) => t.id === selectedTheaterId) || THEATERS[0];
+  const [selectedMovieId, setSelectedMovieId] = useState(id ? parseInt(id, 10) : null);
 
-  const nowShowingMovies = MOVIES.filter((m) => m.status === 'now-showing');
+  // 2. Lấy danh sách rạp từ API
+  const [cinemas, setCinemas] = useState([]);
+  const [selectedCinemaId, setSelectedCinemaId] = useState(null);
 
-  const currentTheaterShowtimes = selectedMovie.theaters?.find(
-    (t) => t.theaterId === selectedTheater.id
-  )?.showtimes || [
-    { showtimeId: 'st-general-1', time: '09:30', room: 'Cinema 1', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-general-2', time: '13:00', room: 'Cinema 2', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-general-3', time: '16:30', room: 'Cinema 1', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-general-4', time: '19:45', room: 'Cinema 3', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-general-5', time: '22:15', room: 'Cinema 2', format: '2D Phụ Đề', price: 95000 },
-  ];
+  // 3. Danh sách ngày
+  const dateList = useMemo(() => generateNextDates(), []);
+  const [selectedDate, setSelectedDate] = useState(dateList[0]);
+
+  // 4. Danh sách suất chiếu theo phim, rạp, ngày
+  const [showtimes, setShowtimes] = useState([]);
+  const [loadingShowtimes, setLoadingShowtimes] = useState(false);
+  const [showtimeError, setShowtimeError] = useState(null);
+
+  // Tự động chọn phim đầu tiên khi danh sách phim tải xong nếu chưa có lựa chọn
+  useEffect(() => {
+    if (allMovies.length > 0 && !selectedMovieId) {
+      const target = id ? parseInt(id, 10) : allMovies[0].movieId;
+      setSelectedMovieId(target);
+    }
+  }, [allMovies, id, selectedMovieId]);
+
+  // Tải danh sách rạp
+  useEffect(() => {
+    const fetchCinemas = async () => {
+      try {
+        const res = await cinemaApi.getCinemas();
+        if (res && res.data && res.data.length > 0) {
+          setCinemas(res.data);
+          setSelectedCinemaId(res.data[0].cinemaId);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải danh sách rạp:', err);
+      }
+    };
+    fetchCinemas();
+  }, []);
+
+  const selectedMovie = useMemo(
+    () => allMovies.find((m) => m.movieId === selectedMovieId) || allMovies[0],
+    [allMovies, selectedMovieId]
+  );
+
+  const selectedCinema = useMemo(
+    () => cinemas.find((c) => c.cinemaId === selectedCinemaId) || cinemas[0],
+    [cinemas, selectedCinemaId]
+  );
+
+  // Tải danh sách suất chiếu
+  const fetchShowtimes = useCallback(async () => {
+    if (!selectedMovieId || !selectedCinemaId || !selectedDate) return;
+    setLoadingShowtimes(true);
+    setShowtimeError(null);
+    try {
+      const params = {
+        movieId: selectedMovieId,
+        cinemaId: selectedCinemaId,
+        date: selectedDate.id,
+      };
+      const res = await showtimeApi.getShowtimes(params);
+      if (res && res.data) {
+        setShowtimes(Array.isArray(res.data) ? res.data : []);
+      } else {
+        setShowtimes([]);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải suất chiếu:', err);
+      setShowtimeError('Không thể tải danh sách suất chiếu.');
+      setShowtimes([]);
+    } finally {
+      setLoadingShowtimes(false);
+    }
+  }, [selectedMovieId, selectedCinemaId, selectedDate]);
+
+  useEffect(() => {
+    fetchShowtimes();
+  }, [fetchShowtimes]);
 
   const handleBook = (st) => {
+    if (!selectedMovie || !selectedCinema) return;
+
     const bookingPayload = {
-      movieId: selectedMovie.id,
+      movieId: selectedMovie.movieId,
       movieTitle: selectedMovie.title,
       moviePoster: selectedMovie.poster,
-      theaterId: selectedTheater.id,
-      theaterName: selectedTheater.name,
-      theaterAddress: selectedTheater.address,
+      theaterId: selectedCinema.cinemaId,
+      theaterName: selectedCinema.cinemaName,
+      theaterAddress: selectedCinema.address,
       showtimeId: st.showtimeId,
-      time: st.time,
-      room: st.room,
-      format: st.format,
-      date: selectedDate,
-      price: st.price,
+      time: st.startTime || st.startHour,
+      room: st.roomName || 'Phòng chiếu',
+      format: '2D Kỹ thuật số',
+      date: selectedDate.label,
+      price: st.basePrice || 85000,
     };
 
-    const user = localStorage.getItem('Vibe Cinema_user');
-    if (!user) {
+    const token =
+      localStorage.getItem(import.meta.env?.VITE_AUTH_TOKEN_KEY || 'vibe_cinema_access_token') ||
+      localStorage.getItem('Vibe Cinema_user') ||
+      localStorage.getItem('vibe_cinema_user');
+
+    if (!token) {
       navigate('/login', {
         state: {
           returnUrl: `/showtime/${st.showtimeId}/seats`,
@@ -83,76 +182,95 @@ export const Showtime = () => {
         {/* 1. Pick Movie Selector */}
         <div className="space-y-3">
           <label className="text-xs font-semibold text-outline uppercase tracking-wider block">
-            1. Chọn bộ phim đang chiếu:
+            1. Chọn bộ phim:
           </label>
-          <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none">
-            {nowShowingMovies.map((m) => (
+
+          {loadingMovies ? (
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="w-52 h-20 rounded-2xl bg-surface-low border border-white/5 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none">
+              {allMovies.map((m) => (
+                <button
+                  key={m.movieId}
+                  onClick={() => setSelectedMovieId(m.movieId)}
+                  className={cn(
+                    'p-2.5 rounded-2xl border text-left shrink-0 w-48 sm:w-56 transition-all flex items-center gap-3 cursor-pointer',
+                    selectedMovieId === m.movieId
+                      ? 'bg-primary/15 border-primary text-white shadow-lg'
+                      : 'bg-surface-low border-white/5 text-outline hover:bg-surface-container hover:text-on-surface'
+                  )}
+                >
+                  <img
+                    src={m.poster}
+                    alt={m.title}
+                    className="w-10 h-14 object-cover rounded-lg shrink-0 shadow-md"
+                  />
+                  <div className="overflow-hidden">
+                    <span className="font-headline text-xs font-bold truncate block text-on-surface">
+                      {m.title}
+                    </span>
+                    <span className="text-[11px] text-outline block mt-0.5">
+                      {m.duration} phút
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 2. Pick Cinema Branch */}
+        <div className="space-y-3">
+          <label className="text-xs font-semibold text-outline uppercase tracking-wider block">
+            2. Chọn cụm rạp xem phim:
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {cinemas.map((t) => (
               <button
-                key={m.id}
-                onClick={() => setSelectedMovieId(m.id)}
+                key={t.cinemaId}
+                onClick={() => setSelectedCinemaId(t.cinemaId)}
                 className={cn(
-                  'p-2.5 rounded-2xl border text-left shrink-0 w-48 sm:w-56 transition-all flex items-center gap-3 cursor-pointer',
-                  selectedMovieId === m.id
-                    ? 'bg-primary/15 border-primary text-white shadow-lg'
+                  'p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer',
+                  selectedCinemaId === t.cinemaId
+                    ? 'bg-primary/15 border-primary text-white shadow-md'
                     : 'bg-surface-low border-white/5 text-outline hover:bg-surface-container hover:text-on-surface'
                 )}
               >
-                <img
-                  src={m.poster}
-                  alt={m.title}
-                  className="w-12 h-16 object-cover rounded-lg shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="font-headline text-xs font-bold text-on-surface line-clamp-1">
-                    {m.title}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-headline text-sm font-bold text-on-surface">
+                      {t.cinemaName}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-high text-secondary font-bold">
+                      {t.status || 'ACTIVE'}
+                    </span>
                   </div>
-                  <div className="text-[10px] text-secondary mt-0.5">{m.duration} phút</div>
-                  <div className="text-[10px] text-outline truncate">{m.genre}</div>
+                  <span className="text-xs text-outline line-clamp-1">{t.address}</span>
                 </div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* 2. Pick Theater Selector */}
+        {/* 3. Pick Date */}
         <div className="space-y-3">
           <label className="text-xs font-semibold text-outline uppercase tracking-wider block">
-            2. Chọn cụm rạp:
+            3. Chọn ngày xem:
           </label>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {THEATERS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedTheaterId(t.id)}
-                className={cn(
-                  'px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2',
-                  selectedTheaterId === t.id
-                    ? 'bg-surface-high text-on-surface border border-white/20 shadow-md'
-                    : 'bg-surface-low text-outline hover:bg-surface-container hover:text-on-surface'
-                )}
-              >
-                <span className="material-symbols-outlined text-[#ffb95f] text-[16px]">location_on</span>
-                <span>{t.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 3. Pick Date Selector */}
-        <div className="space-y-3">
-          <label className="text-xs font-semibold text-outline uppercase tracking-wider block">
-            3. Chọn ngày chiếu:
-          </label>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {DATES.slice(0, 5).map((d) => (
+            {dateList.map((d) => (
               <button
                 key={d.id}
-                onClick={() => setSelectedDate(d.label)}
+                onClick={() => setSelectedDate(d)}
                 className={cn(
-                  'px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer',
-                  selectedDate === d.label
-                    ? 'bg-primary text-white shadow-md'
-                    : 'bg-surface-low text-outline hover:bg-surface-container hover:text-on-surface'
+                  'px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer',
+                  selectedDate.id === d.id
+                    ? 'bg-primary text-white shadow-glow-primary'
+                    : 'bg-surface-low text-outline hover:text-on-surface hover:bg-surface-high'
                 )}
               >
                 {d.label}
@@ -161,58 +279,97 @@ export const Showtime = () => {
           </div>
         </div>
 
-        {/* 4. Showtimes Matrix */}
-        <div className="p-6 rounded-2xl bg-surface-low border border-white/5 space-y-6">
+        {/* 4. Display Matched Showtimes */}
+        <div className="p-6 rounded-3xl bg-surface-low border border-white/5 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
-            <div className="flex items-center gap-4">
-              <img
-                src={selectedMovie.poster}
-                alt={selectedMovie.title}
-                className="w-14 aspect-[2/3] object-cover rounded-xl shadow-md shrink-0"
-              />
+            <div className="flex items-center gap-3">
+              {selectedMovie && (
+                <img
+                  src={selectedMovie.poster}
+                  alt={selectedMovie.title}
+                  className="w-12 h-16 object-cover rounded-xl shadow-md hidden sm:block"
+                />
+              )}
               <div>
-                <h3 className="font-headline text-lg font-bold text-on-surface">
-                  {selectedMovie.title}
-                </h3>
-                <p className="text-xs text-outline mt-0.5">
-                  {selectedTheater.name} • {selectedDate}
-                </p>
+                <h2 className="font-headline text-base sm:text-lg font-bold text-on-surface">
+                  {selectedMovie ? selectedMovie.title : 'Đang chọn phim'}
+                </h2>
+                <div className="flex items-center gap-2 text-xs text-outline mt-0.5">
+                  <span className="text-secondary font-semibold">
+                    {selectedCinema ? selectedCinema.cinemaName : ''}
+                  </span>
+                  <span>•</span>
+                  <span>{selectedDate.label}</span>
+                </div>
               </div>
             </div>
 
-            <Link
-              to={`/movie/${selectedMovie.id}`}
-              className="px-4 py-2 rounded-xl bg-surface-high hover:bg-surface-highest text-xs font-semibold text-on-surface self-start sm:self-auto transition-colors"
-            >
-              Chi tiết phim
-            </Link>
+            <span className="text-xs text-outline">
+              Định dạng: 2D Kỹ Thuật Số Chuẩn Quốc Tế
+            </span>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-outline uppercase tracking-wider block mb-3">
-              Suất chiếu sẵn sàng (Bấm vào giờ chiếu để chọn ghế):
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {currentTheaterShowtimes.map((st) => (
+          {/* Loading state */}
+          {loadingShowtimes && (
+            <div className="py-16 text-center space-y-3">
+              <div className="size-8 border-3 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-outline">Đang tìm kiếm suất chiếu phù hợp...</p>
+            </div>
+          )}
+
+          {/* Error state */}
+          {!loadingShowtimes && showtimeError && (
+            <div className="py-12 text-center space-y-2">
+              <span className="material-symbols-outlined text-primary text-[40px]">error</span>
+              <p className="text-xs text-primary">{showtimeError}</p>
+              <button
+                onClick={() => fetchShowtimes()}
+                className="px-4 py-2 rounded-xl bg-surface-high text-xs font-semibold hover:bg-surface-highest text-on-surface"
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loadingShowtimes && !showtimeError && showtimes.length === 0 && (
+            <div className="py-16 text-center space-y-2">
+              <span className="material-symbols-outlined text-[48px] text-outline">event_busy</span>
+              <h3 className="text-sm font-semibold text-on-surface">
+                Không có suất chiếu phù hợp
+              </h3>
+              <p className="text-xs text-outline max-w-sm mx-auto">
+                Hiện tại cụm rạp chưa có lịch chiếu cho phim này vào ngày đã chọn. Quý khách vui lòng chọn ngày khác hoặc cụm rạp khác.
+              </p>
+            </div>
+          )}
+
+          {/* Showtimes Grid */}
+          {!loadingShowtimes && !showtimeError && showtimes.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {showtimes.map((st) => (
                 <button
                   key={st.showtimeId}
                   onClick={() => handleBook(st)}
-                  className="p-4 rounded-xl bg-surface hover:bg-primary/20 border border-white/5 hover:border-primary text-center transition-all cursor-pointer group shadow-sm"
+                  className="p-3.5 rounded-2xl bg-surface-container border border-white/5 hover:border-primary/50 hover:bg-surface-high transition-all flex flex-col items-center justify-center gap-1 group cursor-pointer shadow-md hover:scale-105"
                 >
-                  <div className="font-headline text-xl font-bold text-on-surface group-hover:text-primary-light">
-                    {st.time}
-                  </div>
-                  <div className="text-[10px] text-outline mt-1">{st.room}</div>
-                  <div className="text-xs text-tertiary font-bold mt-1.5">
-                    {st.price.toLocaleString('vi-VN')}đ / vé
-                  </div>
+                  <span className="font-headline text-lg font-bold text-on-surface group-hover:text-primary transition-colors">
+                    {st.startTime || st.startHour}
+                  </span>
+                  <span className="text-[11px] text-outline line-clamp-1">
+                    {st.roomName || 'Phòng chiếu'}
+                  </span>
+                  <span className="text-[11px] font-bold text-secondary">
+                    {(st.basePrice || 85000).toLocaleString('vi-VN')}đ
+                  </span>
                 </button>
               ))}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </MainLayout>
   );
 };
+
 export default Showtime;

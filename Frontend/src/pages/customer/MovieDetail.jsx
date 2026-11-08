@@ -1,48 +1,170 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
-import { MOVIES, THEATERS, DATES } from '../../assets/mockData';
+import movieApi from '../../api/movieApi';
+import cinemaApi from '../../api/cinemaApi';
+import showtimeApi from '../../api/showtimeApi';
 import { cn } from '../../lib/cn';
+
+// Tạo danh sách 5 ngày liên tiếp bắt đầu từ hôm nay
+const generateNextDates = () => {
+  const dates = [];
+  const today = new Date();
+
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    let label = `${day}/${month}`;
+    if (i === 0) label = `Hôm nay (${day}/${month})`;
+    else if (i === 1) label = `Ngày mai (${day}/${month})`;
+    else {
+      const weekdays = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+      label = `${weekdays[d.getDay()]} (${day}/${month})`;
+    }
+
+    dates.push({ id: dateStr, label });
+  }
+
+  return dates;
+};
 
 export const MovieDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // Find movie by id, fallback to first movie if not found
-  const movie = MOVIES.find((m) => m.id === id) || MOVIES[0];
-  const [selectedTheater, setSelectedTheater] = useState(THEATERS[0]);
-  const [selectedDate, setSelectedDate] = useState(DATES[0].label);
+  const [movie, setMovie] = useState(null);
+  const [loadingMovie, setLoadingMovie] = useState(true);
+  const [movieError, setMovieError] = useState(null);
+
+  const [cinemas, setCinemas] = useState([]);
+  const [selectedCinema, setSelectedCinema] = useState(null);
+
+  const dateList = useMemo(() => generateNextDates(), []);
+  const [selectedDate, setSelectedDate] = useState(dateList[0]);
+
+  const [showtimes, setShowtimes] = useState([]);
+  const [loadingShowtimes, setLoadingShowtimes] = useState(false);
+  const [showtimesError, setShowtimesError] = useState(null);
+
   const [showTrailerModal, setShowTrailerModal] = useState(false);
 
-  // Find showtimes for selected theater
-  const currentTheaterData = movie.theaters?.find(
-    (t) => t.theaterId === selectedTheater.id
-  );
-  const showtimes = currentTheaterData?.showtimes || [
-    { showtimeId: 'st-fallback-1', time: '10:30', room: 'Cinema 1', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-fallback-2', time: '14:00', room: 'Cinema 2', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-fallback-3', time: '17:30', room: 'Cinema 1', format: '2D Phụ Đề', price: 95000 },
-    { showtimeId: 'st-fallback-4', time: '20:45', room: 'Cinema 3', format: '2D Phụ Đề', price: 95000 },
-  ];
+  // 1. Tải thông tin phim theo ID
+  const fetchMovie = useCallback(async () => {
+    if (!id) return;
+    setLoadingMovie(true);
+    setMovieError(null);
+    try {
+      const res = await movieApi.getMovieById(id);
+      if (res && res.data) {
+        const m = res.data;
+        setMovie({
+          ...m,
+          movieId: m.movieId ?? m.id,
+          id: m.movieId ?? m.id,
+          poster: m.posterUrl || m.poster || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800',
+          backdrop: m.posterUrl || m.poster,
+          duration: m.durationMinutes ?? m.duration ?? 120,
+          synopsis: m.description || m.synopsis || '',
+          genre: Array.isArray(m.genres) ? m.genres.map((g) => g.name || g).join(' • ') : (m.genre || 'Hành động'),
+          rating: 9.2,
+          voteCount: '12.4k đánh giá',
+          ageRating: m.ageRating || 'C13',
+          ageRatingLabel: `${m.ageRating || 'C13'} - Phù hợp theo độ tuổi quy định`,
+          language: 'Tiếng Việt - Phụ đề',
+          releaseDate: m.releaseDate || '2026-10-01',
+          trailerUrl: m.trailerUrl || 'https://www.youtube.com/embed/TcMBFSGVi1c',
+          isNowShowing: m.status?.toUpperCase() === 'NOW_SHOWING',
+        });
+      } else {
+        setMovieError('Không tìm thấy thông tin phim.');
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải chi tiết phim:', err);
+      setMovieError(err?.message || 'Không thể tải thông tin phim từ máy chủ.');
+    } finally {
+      setLoadingMovie(false);
+    }
+  }, [id]);
 
+  useEffect(() => {
+    fetchMovie();
+  }, [fetchMovie]);
+
+  // 2. Tải danh sách rạp
+  useEffect(() => {
+    const fetchCinemas = async () => {
+      try {
+        const res = await cinemaApi.getCinemas();
+        if (res && res.data && res.data.length > 0) {
+          setCinemas(res.data);
+          setSelectedCinema(res.data[0]);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải danh sách rạp:', err);
+      }
+    };
+    fetchCinemas();
+  }, []);
+
+  // 3. Tải danh sách suất chiếu của phim tại rạp và ngày đã chọn
+  const fetchShowtimes = useCallback(async () => {
+    if (!id || !selectedCinema) return;
+    setLoadingShowtimes(true);
+    setShowtimesError(null);
+    try {
+      const params = {
+        movieId: id,
+        cinemaId: selectedCinema.cinemaId,
+        date: selectedDate.id,
+      };
+      const res = await showtimeApi.getShowtimes(params);
+      if (res && res.data) {
+        setShowtimes(Array.isArray(res.data) ? res.data : []);
+      } else {
+        setShowtimes([]);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải suất chiếu:', err);
+      setShowtimesError('Không thể tải danh sách suất chiếu.');
+      setShowtimes([]);
+    } finally {
+      setLoadingShowtimes(false);
+    }
+  }, [id, selectedCinema, selectedDate]);
+
+  useEffect(() => {
+    fetchShowtimes();
+  }, [fetchShowtimes]);
+
+  // Xử lý khi chọn suất chiếu
   const handleSelectShowtime = (st) => {
     const bookingPayload = {
-      movieId: movie.id,
+      movieId: movie.movieId,
       movieTitle: movie.title,
       moviePoster: movie.poster,
-      theaterId: selectedTheater.id,
-      theaterName: selectedTheater.name,
-      theaterAddress: selectedTheater.address,
+      theaterId: selectedCinema?.cinemaId,
+      theaterName: selectedCinema?.cinemaName,
+      theaterAddress: selectedCinema?.address,
       showtimeId: st.showtimeId,
-      time: st.time,
-      room: st.room,
-      format: st.format,
-      date: selectedDate,
-      price: st.price,
+      time: st.startTime || st.startHour,
+      room: st.roomName || 'Phòng 1',
+      format: '2D Kỹ thuật số',
+      date: selectedDate.label,
+      price: st.basePrice || 85000,
     };
 
-    const user = localStorage.getItem('Vibe Cinema_user');
-    if (!user) {
+    const token =
+      localStorage.getItem(import.meta.env?.VITE_AUTH_TOKEN_KEY || 'vibe_cinema_access_token') ||
+      localStorage.getItem('Vibe Cinema_user') ||
+      localStorage.getItem('vibe_cinema_user');
+
+    if (!token) {
       navigate('/login', {
         state: {
           returnUrl: `/showtime/${st.showtimeId}/seats`,
@@ -57,6 +179,37 @@ export const MovieDetail = () => {
       state: bookingPayload,
     });
   };
+
+  // Trạng thái Loading Phim
+  if (loadingMovie) {
+    return (
+      <MainLayout>
+        <div className="w-full px-4 sm:px-8 lg:px-12 py-20 flex flex-col items-center justify-center space-y-4">
+          <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-on-surface text-sm font-semibold">Đang tải dữ liệu phim...</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Trạng thái Lỗi khi tải phim
+  if (movieError || !movie) {
+    return (
+      <MainLayout>
+        <div className="w-full px-4 sm:px-8 lg:px-12 py-24 text-center space-y-4">
+          <span className="material-symbols-outlined text-[64px] text-primary">error</span>
+          <h2 className="font-headline text-2xl font-bold text-on-surface">Không tìm thấy phim</h2>
+          <p className="text-outline text-sm">{movieError || 'Phim không tồn tại hoặc đã bị gỡ.'}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer"
+          >
+            Quay lại trang chủ
+          </button>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
@@ -104,17 +257,22 @@ export const MovieDetail = () => {
                 <span className="material-symbols-outlined text-[14px]">star</span>
                 {movie.rating}/10 ({movie.voteCount})
               </span>
-              <span className="text-outline text-xs">
-                {movie.status === 'now-showing' ? 'Đang công chiếu' : 'Sắp ra mắt'}
-              </span>
+              {movie.isNowShowing ? (
+                <span className="px-2 py-0.5 rounded bg-emerald-600/90 text-white font-headline text-xs font-bold flex items-center gap-1 shadow-sm">
+                  <span className="size-1.5 rounded-full bg-white animate-pulse" />
+                  Đang công chiếu
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-amber-500/90 text-black font-headline text-xs font-bold flex items-center gap-1 shadow-sm">
+                  <span className="size-1.5 rounded-full bg-black/50" />
+                  Sắp khởi chiếu
+                </span>
+              )}
             </div>
 
             <h1 className="font-headline text-2xl sm:text-3xl lg:text-4xl font-bold text-on-surface">
               {movie.title}
             </h1>
-            {movie.originalTitle && (
-              <p className="text-sm text-outline italic -mt-2">{movie.originalTitle}</p>
-            )}
 
             <p className="text-xs text-outline">{movie.ageRatingLabel}</p>
 
@@ -138,7 +296,7 @@ export const MovieDetail = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              {movie.status === 'now-showing' ? (
+              {movie.isNowShowing ? (
                 <button
                   onClick={() => {
                     const showtimesSection = document.getElementById('showtimes-section');
@@ -153,7 +311,7 @@ export const MovieDetail = () => {
                 </button>
               ) : (
                 <span className="px-4 py-2.5 rounded-xl bg-surface-high text-secondary text-xs font-semibold">
-                  Phim chưa mở bán vé sớm
+                  Phim sắp chiếu - Chưa mở bán vé
                 </span>
               )}
 
@@ -163,7 +321,7 @@ export const MovieDetail = () => {
                   className="px-5 py-3 rounded-xl bg-surface-high hover:bg-surface-highest text-on-surface text-sm font-medium flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-secondary text-[18px]">play_circle</span>
-                  Xem Trailer ({movie.trailerDuration || '2:30'})
+                  Xem Trailer
                 </button>
               )}
             </div>
@@ -171,7 +329,7 @@ export const MovieDetail = () => {
         </div>
       </section>
 
-      {/* 2. SYNOPSIS & CAST CREW */}
+      {/* 2. SYNOPSIS & RULES */}
       <section className="w-full px-4 sm:px-8 lg:px-12 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 space-y-6">
@@ -180,27 +338,9 @@ export const MovieDetail = () => {
                 <span className="w-1.5 h-4 bg-primary rounded-full" />
                 Nội Dung Phim
               </h3>
-              <p className="text-sm text-outline leading-relaxed">
-                {movie.synopsis}
+              <p className="text-sm text-outline leading-relaxed whitespace-pre-line">
+                {movie.synopsis || 'Nội dung đang được cập nhật.'}
               </p>
-            </div>
-
-            {/* Cast & Director */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5 rounded-2xl bg-surface-low border border-white/5 text-xs">
-              <div>
-                <span className="text-outline uppercase text-[10px] font-bold block mb-1">
-                  Đạo diễn
-                </span>
-                <span className="text-on-surface font-semibold text-sm">{movie.director || 'Đang cập nhật'}</span>
-              </div>
-              <div>
-                <span className="text-outline uppercase text-[10px] font-bold block mb-1">
-                  Diễn viên chính
-                </span>
-                <span className="text-on-surface font-semibold text-sm">
-                  {movie.cast && movie.cast.length > 0 ? movie.cast.join(', ') : 'Đang cập nhật'}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -212,15 +352,15 @@ export const MovieDetail = () => {
               <ul className="space-y-2 text-xs text-outline">
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-tertiary text-[16px] shrink-0 mt-0.5">verified</span>
-                  <span>Khán giả cần xuất trình CCCD đúng độ tuổi tại cửa soát vé.</span>
+                  <span>Khán giả vui lòng xuất trình giấy tờ xác thực độ tuổi khi soát vé.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-tertiary text-[16px] shrink-0 mt-0.5">verified</span>
-                  <span>Vé có thể hủy trước 120 phút bắt đầu suất chiếu trong trang cá nhân.</span>
+                  <span>Vé đã đặt được hủy trước ít nhất 60 phút theo chính sách rạp.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-tertiary text-[16px] shrink-0 mt-0.5">verified</span>
-                  <span>Màn hình đạt tiêu chuẩn hình ảnh sắc nét và âm thanh kỹ thuật số.</span>
+                  <span>Ghế đặt được giữ tối đa 10 phút để hoàn tất thanh toán an toàn.</span>
                 </li>
               </ul>
             </div>
@@ -229,7 +369,10 @@ export const MovieDetail = () => {
       </section>
 
       {/* 3. SHOWTIMES SCHEDULE SECTION */}
-      <section id="showtimes-section" className="w-full px-4 sm:px-8 lg:px-12 py-10 bg-surface-lowest/80 border-t border-white/5 space-y-8">
+      <section
+        id="showtimes-section"
+        className="w-full px-4 sm:px-8 lg:px-12 py-10 bg-surface-lowest/80 border-t border-white/5 space-y-8"
+      >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="text-xs font-bold text-secondary uppercase tracking-wider">
@@ -242,15 +385,15 @@ export const MovieDetail = () => {
 
           {/* Date Selector */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {DATES.slice(0, 5).map((d) => (
+            {dateList.map((d) => (
               <button
                 key={d.id}
-                onClick={() => setSelectedDate(d.label)}
+                onClick={() => setSelectedDate(d)}
                 className={cn(
                   'px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer',
-                  selectedDate === d.label
-                    ? 'bg-primary text-white shadow-md'
-                    : 'bg-surface-low text-outline hover:text-on-surface hover:bg-surface-container'
+                  selectedDate.id === d.id
+                    ? 'bg-primary text-white shadow-glow-primary'
+                    : 'bg-surface-low text-outline hover:text-on-surface hover:bg-surface-high'
                 )}
               >
                 {d.label}
@@ -259,98 +402,131 @@ export const MovieDetail = () => {
           </div>
         </div>
 
-        {/* Theater tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-          {THEATERS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setSelectedTheater(t)}
-              className={cn(
-                'px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2',
-                selectedTheater.id === t.id
-                  ? 'bg-surface-high text-on-surface border border-white/20 shadow-md'
-                  : 'bg-surface-low text-outline hover:bg-surface-container hover:text-on-surface'
-              )}
-            >
-              <span className="material-symbols-outlined text-[16px] text-secondary">location_on</span>
-              <span>{t.name}</span>
-            </button>
-          ))}
+        {/* Theater Selector */}
+        <div className="space-y-3">
+          <label className="text-xs font-semibold text-outline uppercase tracking-wider block">
+            Chọn cụm rạp:
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {cinemas.map((c) => (
+              <button
+                key={c.cinemaId}
+                onClick={() => setSelectedCinema(c)}
+                className={cn(
+                  'p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer',
+                  selectedCinema?.cinemaId === c.cinemaId
+                    ? 'bg-primary/10 border-primary shadow-md'
+                    : 'bg-surface-low border-white/5 hover:bg-surface-container'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-headline text-sm font-bold text-on-surface">
+                    {c.cinemaName}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-high text-secondary font-bold">
+                    {c.status || 'ACTIVE'}
+                  </span>
+                </div>
+                <span className="text-xs text-outline line-clamp-1 mt-1">
+                  {c.address}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Showtimes Grid for this Theater */}
-        <div className="p-6 rounded-2xl bg-surface-low border border-white/5 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-white/5">
-            <div>
-              <h3 className="font-headline text-base font-bold text-on-surface">
-                {selectedTheater.name}
-              </h3>
-              <p className="text-xs text-outline mt-0.5">{selectedTheater.address}</p>
-            </div>
-            <div className="text-xs text-secondary font-semibold">
-              {selectedDate}
-            </div>
+        {/* Showtimes List */}
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-on-surface flex items-center gap-2">
+              <span className="size-2 rounded-full bg-secondary" />
+              <span>Suất chiếu tại {selectedCinema?.cinemaName || 'Rạp đã chọn'} ({selectedDate.label}):</span>
+            </h3>
+            {showtimes.length > 0 && (
+              <span className="text-xs text-outline">{showtimes.length} suất chiếu khả dụng</span>
+            )}
           </div>
 
-          {movie.status === 'coming-soon' ? (
-            <div className="py-12 text-center text-xs text-outline">
-              Phim sắp ra mắt, lịch chiếu chính thức sẽ được mở bán trước ngày khởi chiếu 3 ngày.
+          {/* Loading Showtimes Spinner */}
+          {loadingShowtimes && (
+            <div className="py-12 flex items-center justify-center gap-3">
+              <div className="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-outline">Đang tải lịch chiếu từ cơ sở dữ liệu...</span>
             </div>
-          ) : (
-            <div>
-              <label className="text-xs font-semibold text-outline uppercase tracking-wider block mb-3">
-                Các khung giờ chiếu khả dụng (Nhấp vào giờ chiếu để chọn ghế):
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {showtimes.map((st) => (
-                  <button
-                    key={st.showtimeId}
-                    onClick={() => handleSelectShowtime(st)}
-                    className="p-3.5 rounded-xl bg-surface hover:bg-primary/20 border border-white/5 hover:border-primary text-center transition-all cursor-pointer group shadow-sm"
-                  >
-                    <div className="font-headline text-lg font-bold text-on-surface group-hover:text-primary-light">
-                      {st.time}
-                    </div>
-                    <div className="text-[10px] text-outline mt-0.5">{st.room}</div>
-                    <div className="text-[11px] text-tertiary font-bold mt-1">
-                      {st.price.toLocaleString('vi-VN')}đ
-                    </div>
-                  </button>
-                ))}
-              </div>
+          )}
+
+          {/* Showtimes Error */}
+          {!loadingShowtimes && showtimesError && (
+            <div className="p-4 rounded-xl bg-surface-low border border-primary/20 text-center space-y-2">
+              <p className="text-xs text-primary">{showtimesError}</p>
+              <button
+                onClick={() => fetchShowtimes()}
+                className="px-4 py-1.5 rounded-lg bg-surface-high hover:bg-surface-highest text-xs text-on-surface font-semibold"
+              >
+                Tải lại
+              </button>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!loadingShowtimes && !showtimesError && showtimes.length === 0 && (
+            <div className="py-12 text-center bg-surface-low/40 rounded-2xl border border-white/5 space-y-2">
+              <span className="material-symbols-outlined text-[36px] text-outline">schedule</span>
+              <p className="text-xs text-outline">
+                {!movie.isNowShowing
+                  ? `Phim dự kiến khởi chiếu vào ngày ${movie.releaseDate}. Vé và lịch chiếu sẽ được mở bán trước ngày công chiếu.`
+                  : 'Không tìm thấy suất chiếu nào cho rạp và ngày đã chọn. Vui lòng chuyển sang ngày hoặc cụm rạp khác.'}
+              </p>
+            </div>
+          )}
+
+          {/* Showtimes Grid */}
+          {!loadingShowtimes && !showtimesError && showtimes.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {showtimes.map((st) => (
+                <button
+                  key={st.showtimeId}
+                  onClick={() => handleSelectShowtime(st)}
+                  className="p-3.5 rounded-2xl bg-surface-low border border-white/5 hover:border-primary/50 hover:bg-surface-container transition-all flex flex-col items-center justify-center gap-1 group cursor-pointer shadow-md hover:scale-105"
+                >
+                  <span className="font-headline text-lg font-bold text-on-surface group-hover:text-primary transition-colors">
+                    {st.startTime || st.startHour}
+                  </span>
+                  <span className="text-[11px] text-outline line-clamp-1">
+                    {st.roomName || 'Phòng chiếu'}
+                  </span>
+                  <span className="text-[11px] font-bold text-secondary">
+                    {(st.basePrice || 85000).toLocaleString('vi-VN')}đ
+                  </span>
+                </button>
+              ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* 4. TRAILER MODAL */}
+      {/* Trailer Modal */}
       {showTrailerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-3xl bg-surface border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
-            <div className="p-4 bg-surface-low flex items-center justify-between border-b border-white/5">
-              <span className="font-headline text-sm font-bold text-on-surface">
-                Trailer - {movie.title}
-              </span>
-              <button
-                onClick={() => setShowTrailerModal(false)}
-                className="size-8 rounded-lg bg-surface-high hover:bg-surface-highest text-on-surface flex items-center justify-center cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[18px]">close</span>
-              </button>
-            </div>
-            <div className="aspect-video w-full bg-black">
-              <iframe
-                src={movie.trailerUrl}
-                title={movie.title}
-                className="size-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <button
+              onClick={() => setShowTrailerModal(false)}
+              className="absolute top-4 right-4 z-10 size-10 rounded-full bg-surface-lowest/80 text-white flex items-center justify-center hover:bg-primary transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <iframe
+              src={movie.trailerUrl}
+              title={`${movie.title} Trailer`}
+              className="size-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
           </div>
         </div>
       )}
     </MainLayout>
   );
 };
+
 export default MovieDetail;

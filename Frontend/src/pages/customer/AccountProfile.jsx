@@ -2,7 +2,16 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { Button } from '../../components/Button';
-import { MOCK_USER, INITIAL_TRANSACTIONS } from '../../assets/mockData';
+const MOCK_USER = {
+  id: 'usr-101',
+  name: 'Nguyễn Văn A',
+  email: 'a@example.com',
+  phone: '0901 234 567',
+  dob: '2003-05-20',
+  gender: 'Nam',
+};
+
+const INITIAL_TRANSACTIONS = [];
 import { cn } from '../../lib/cn';
 
 export const AccountProfile = () => {

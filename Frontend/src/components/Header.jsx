@@ -1,16 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CineLogo } from './CineLogo';
-import { THEATERS } from '../assets/mockData';
+import cinemaApi from '../api/cinemaApi';
 import { cn } from '../lib/cn';
 
 export const Header = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showTheaters, setShowTheaters] = useState(false);
-  const [selectedTheater, setSelectedTheater] = useState(THEATERS[0]);
+  const [theaters, setTheaters] = useState([]);
+  const [selectedTheater, setSelectedTheater] = useState({
+    id: 1,
+    name: 'CGV Vincom Center Đồng Khởi',
+    shortName: 'CGV Vincom',
+    address: '72 Lê Thánh Tôn, Bến Nghé, Quận 1',
+  });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
+
+  // Tải danh sách rạp từ API
+  useEffect(() => {
+    const fetchCinemas = async () => {
+      try {
+        const res = await cinemaApi.getCinemas();
+        if (res && res.data && res.data.length > 0) {
+          const mapped = res.data.map((c) => ({
+            id: c.cinemaId,
+            name: c.cinemaName,
+            shortName: c.cinemaName.split(' ').slice(0, 2).join(' '),
+            address: c.address,
+          }));
+          setTheaters(mapped);
+          setSelectedTheater(mapped[0]);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải danh sách rạp:', err);
+      }
+    };
+    fetchCinemas();
+  }, []);
 
   // Click outside to close account dropdown
   useEffect(() => {
@@ -30,7 +58,9 @@ export const Header = () => {
   // Read current user from localStorage
   const getUser = () => {
     try {
-      const stored = localStorage.getItem('Vibe Cinema_user');
+      const stored =
+        localStorage.getItem(import.meta.env?.VITE_AUTH_USER_KEY || 'vibe_cinema_user') ||
+        localStorage.getItem('Vibe Cinema_user');
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -39,9 +69,30 @@ export const Header = () => {
 
   const [currentUser, setCurrentUser] = useState(getUser);
 
+  // Read ticket count from localStorage (Chỉ đếm khi người dùng đã đăng nhập)
+  const getTicketCount = () => {
+    const user = getUser();
+    if (!user) return 0;
+    try {
+      const stored = localStorage.getItem('Vibe Cinema_tickets');
+      if (stored) {
+        const list = JSON.parse(stored);
+        if (Array.isArray(list)) {
+          return list.filter((t) => t.status === 'confirmed' || t.status === 'upcoming').length;
+        }
+      }
+      return 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const [ticketCount, setTicketCount] = useState(getTicketCount);
+
   useEffect(() => {
     const handleAuthChange = () => {
       setCurrentUser(getUser());
+      setTicketCount(getTicketCount());
     };
     window.addEventListener('authChange', handleAuthChange);
     window.addEventListener('storage', handleAuthChange);
@@ -51,26 +102,25 @@ export const Header = () => {
     };
   }, []);
 
-  // Read ticket count from localStorage
-  const getTicketCount = () => {
-    try {
-      const stored = localStorage.getItem('Vibe Cinema_tickets');
-      if (stored) {
-        const list = JSON.parse(stored);
-        return list.filter((t) => t.status === 'confirmed').length;
-      }
-      return 1;
-    } catch {
-      return 0;
-    }
-  };
-
-  const ticketCount = getTicketCount();
-
   const handleLogout = () => {
+    localStorage.removeItem(import.meta.env?.VITE_AUTH_TOKEN_KEY || 'vibe_cinema_access_token');
+    localStorage.removeItem(import.meta.env?.VITE_AUTH_USER_KEY || 'vibe_cinema_user');
     localStorage.removeItem('Vibe Cinema_user');
     window.dispatchEvent(new Event('authChange'));
     navigate('/');
+  };
+
+  // Điều hướng kiểm tra đăng nhập khi bấm vào "Vé của tôi"
+  const handleMyTicketsClick = (e) => {
+    if (!currentUser) {
+      e.preventDefault();
+      navigate('/login', {
+        state: {
+          returnUrl: '/my-tickets',
+          message: 'Vui lòng đăng nhập để xem vé đã đặt.',
+        },
+      });
+    }
   };
 
   const isActive = (path) => location.pathname === path;
@@ -116,7 +166,7 @@ export const Header = () => {
                   Danh sách rạp hiện có
                 </div>
                 <div className="space-y-1">
-                  {THEATERS.map((t) => (
+                  {(theaters.length > 0 ? theaters : [selectedTheater]).map((t) => (
                     <button
                       key={t.id}
                       onClick={() => {
@@ -148,18 +198,16 @@ export const Header = () => {
           <Link to="/now-showing" className={getNavLinkClass(isActive('/now-showing'))}>
             Phim Đang Chiếu
           </Link>
-          <Link
-            to="/movie/dat-rung-phuong-nam/showtime"
-            className={getNavLinkClass(location.pathname.includes('/showtime'))}
-          >
-            Lịch chiếu
+          <Link to="/coming-soon" className={getNavLinkClass(isActive('/coming-soon'))}>
+            Phim Sắp Chiếu
           </Link>
           <Link
             to="/my-tickets"
+            onClick={handleMyTicketsClick}
             className={cn(getNavLinkClass(isActive('/my-tickets')), 'flex items-center gap-1.5')}
           >
             <span>Vé của tôi</span>
-            {ticketCount > 0 && (
+            {currentUser && ticketCount > 0 && (
               <span className="px-1.5 py-0.2 text-[10px] bg-secondary-container text-black font-bold rounded-full">
                 {ticketCount}
               </span>
@@ -321,18 +369,16 @@ export const Header = () => {
         <Link to="/now-showing" className={getMobileNavLinkClass(isActive('/now-showing'))}>
           Đang Chiếu
         </Link>
-        <Link
-          to="/movie/dat-rung-phuong-nam/showtime"
-          className={getMobileNavLinkClass(location.pathname.includes('/showtime'))}
-        >
-          Lịch chiếu
+        <Link to="/coming-soon" className={getMobileNavLinkClass(isActive('/coming-soon'))}>
+          Sắp Chiếu
         </Link>
         <Link
           to="/my-tickets"
+          onClick={handleMyTicketsClick}
           className={cn(getMobileNavLinkClass(isActive('/my-tickets')), 'flex items-center gap-1')}
         >
           <span>Vé của tôi</span>
-          {ticketCount > 0 && (
+          {currentUser && ticketCount > 0 && (
             <span className="px-1 py-0 text-[9px] bg-secondary-container text-black font-bold rounded-full">
               {ticketCount}
             </span>

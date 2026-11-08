@@ -1,21 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Backend.Models;
 
-public partial class Invoice
+[Table("Invoice")]
+public class Invoice
 {
+    [Key]
+    [Column("InvoiceID")]
     public int InvoiceId { get; set; }
 
     public DateTime? CreateDate { get; set; }
 
+    [MaxLength(50)]
     public string? Status { get; set; }
 
-    public int? UserId { get; set; }
+    [Column(TypeName = "decimal(18, 2)")]
+    public decimal? TotalPrice { get; set; }
 
-    public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    [Column("BookingID")]
+    public int? BookingId { get; set; }
 
-    public virtual ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
-
-    public virtual Account? User { get; set; }
+    public virtual Booking? Booking { get; set; }
+    public virtual ICollection<InvoiceDetail> InvoiceDetails { get; set; } = new List<InvoiceDetail>();
 }
