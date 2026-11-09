@@ -21,5 +21,5 @@ public partial class Account
 
     public string? Role { get; set; }
 
-    public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+    public virtual Customer? Customer { get; set; }
 }

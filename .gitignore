@@ -38,3 +38,19 @@ Thumbs.db
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Build
+bin/
+obj/
+
+# Local configuration
+appsettings.json
+appsettings.Development.json
+appsettings.Local.json
+
+# Local API tests
+test.http
+
+# User-specific files
+*.user
+*.suo

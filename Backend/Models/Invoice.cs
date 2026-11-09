@@ -11,11 +11,9 @@ public partial class Invoice
 
     public string? Status { get; set; }
 
-    public int? UserId { get; set; }
+    public decimal? TotalPrice { get; set; }
+    public int? BookingId { get; set; }
 
-    public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
-
-    public virtual ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
-
-    public virtual Account? User { get; set; }
+    public virtual Booking? Booking { get; set; }
+    public virtual ICollection<InvoiceDetail> InvoiceDetails { get; set; } = new List<InvoiceDetail>();
 }
