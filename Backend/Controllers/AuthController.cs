@@ -1,261 +1,267 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Backend.Data;
-using Backend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Data.SqlClient;
+using MovieTicketBooking.Api.DTOs;
+using MovieTicketBooking.Api.Services;
+using System.Security.Claims;
 
-namespace Backend.Controllers;
+namespace MovieTicketBooking.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly AppDbContext _context;
-    private readonly IConfiguration _configuration;
+    private readonly AuthService _authService;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AppDbContext context, IConfiguration configuration)
+    public AuthController(
+        AuthService authService,
+        ILogger<AuthController> logger)
     {
-        _context = context;
-        _configuration = configuration;
+        _authService = authService;
+        _logger = logger;
     }
 
-    public class RegisterRequest
-    {
-        public string FullName { get; set; } = string.Empty;
-        public string? Phone { get; set; }
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string? Dob { get; set; }
-        public string? Gender { get; set; }
-    }
-
-    public class LoginRequest
-    {
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-    }
-
-    public class UpdateProfileRequest
-    {
-        public string? FullName { get; set; }
-        public string? Phone { get; set; }
-        public string? Dob { get; set; }
-        public string? Gender { get; set; }
-    }
-
-    /// <summary>
-    /// POST /api/auth/register
-    /// </summary>
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+    public async Task<IActionResult> Register(
+        [FromBody] RegisterRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+        try
         {
-            return BadRequest(ApiResponse.Fail("Email và mật khẩu là bắt buộc."));
-        }
+            var result = await _authService.RegisterAsync(request);
 
-        var normalizedEmail = request.Email.Trim().ToLower();
-        var exists = await _context.Accounts.AnyAsync(a => a.Email != null && a.Email.ToLower() == normalizedEmail);
-        if (exists)
-        {
-            return Conflict(ApiResponse.Fail("Email này đã được sử dụng bởi một tài khoản khác."));
-        }
-
-        DateOnly? dobParsed = null;
-        if (!string.IsNullOrWhiteSpace(request.Dob) && DateOnly.TryParse(request.Dob, out var d))
-        {
-            dobParsed = d;
-        }
-
-        var account = new Account
-        {
-            FullName = request.FullName?.Trim(),
-            Phone = request.Phone?.Trim(),
-            Email = normalizedEmail,
-            Dob = dobParsed,
-            Gender = request.Gender?.Trim(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Role = "CUSTOMER"
-        };
-
-        _context.Accounts.Add(account);
-        await _context.SaveChangesAsync();
-
-        var customer = new Customer
-        {
-            UserId = account.UserId
-        };
-        _context.Customers.Add(customer);
-        await _context.SaveChangesAsync();
-
-        var data = new
-        {
-            userId = account.UserId,
-            fullName = account.FullName,
-            phone = account.Phone,
-            email = account.Email,
-            dob = account.Dob?.ToString("yyyy-MM-dd"),
-            gender = account.Gender,
-            role = account.Role
-        };
-
-        return StatusCode(201, ApiResponse.Ok(data, "Đăng ký thành công"));
-    }
-
-    /// <summary>
-    /// POST /api/auth/login
-    /// </summary>
-    [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
-        {
-            return BadRequest(ApiResponse.Fail("Vui lòng nhập email và mật khẩu."));
-        }
-
-        var normalizedEmail = request.Email.Trim().ToLower();
-        var account = await _context.Accounts.FirstOrDefaultAsync(a => a.Email != null && a.Email.ToLower() == normalizedEmail);
-
-        if (account == null || string.IsNullOrEmpty(account.PasswordHash) ||
-            !BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
-        {
-            return Unauthorized(ApiResponse.Fail("Email hoặc mật khẩu không chính xác."));
-        }
-
-        var secretKey = _configuration["JwtSettings:SecretKey"] ?? "Default_Secret_Key_Movie_Ticket_Booking_2026!";
-        var issuer = _configuration["JwtSettings:Issuer"] ?? "MovieTicketBookingAPI";
-        var audience = _configuration["JwtSettings:Audience"] ?? "MovieTicketBookingClient";
-        var expirySeconds = int.TryParse(_configuration["JwtSettings:ExpirySeconds"], out var exp) ? exp : 3600;
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new[]
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, account.UserId.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, account.Email ?? ""),
-            new Claim(ClaimTypes.Name, account.FullName ?? ""),
-            new Claim(ClaimTypes.Role, account.Role ?? "CUSTOMER")
-        };
-
-        var token = new JwtSecurityToken(
-            issuer: issuer,
-            audience: audience,
-            claims: claims,
-            expires: DateTime.UtcNow.AddSeconds(expirySeconds),
-            signingCredentials: creds
-        );
-
-        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-        var data = new
-        {
-            accessToken = tokenString,
-            tokenType = "Bearer",
-            expiresIn = expirySeconds,
-            user = new
+            if (!result.Success)
             {
-                userId = account.UserId,
-                fullName = account.FullName,
-                email = account.Email,
-                phone = account.Phone,
-                role = account.Role
+                return Conflict(new
+                {
+                    success = false,
+                    data = (object?)null,
+                    message = result.Message
+                });
             }
-        };
 
-        return Ok(ApiResponse.Ok(data, "Đăng nhập thành công"));
+            return StatusCode(201, new
+            {
+                success = true,
+                data = result.User,
+                message = result.Message
+            });
+        }
+        catch (SqlException ex)
+            when (ex.Number is 2601 or 2627)
+        {
+            _logger.LogWarning(
+                ex, "Duplicate account data during registration.");
+
+            return Conflict(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Email or phone already exists"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Registration failed.");
+
+            return StatusCode(500, new
+            {
+                success = false,
+                data = (object?)null,
+                message = "An unexpected error occurred"
+            });
+        }
     }
 
-    /// <summary>
-    /// POST /api/auth/logout
-    /// </summary>
-    [HttpPost("logout")]
-    public IActionResult Logout()
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(
+        [FromBody] LoginRequest request)
     {
-        return Ok(ApiResponse.Ok(null, "Đăng xuất thành công"));
+        try
+        {
+            var result = await _authService.LoginAsync(request);
+
+            if (result is null)
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    data = (object?)null,
+                    message = "Invalid email or password"
+                });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    accessToken = result.Value.Token,
+                    tokenType = "Bearer",
+                    expiresIn = result.Value.ExpiresIn,
+                    user = result.Value.User
+                },
+                message = "Login successful"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Login failed.");
+
+            return StatusCode(500, new
+            {
+                success = false,
+                data = (object?)null,
+                message = "An unexpected error occurred"
+            });
+        }
     }
 
-    /// <summary>
-    /// GET /api/auth/me
-    /// </summary>
+
+    [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
-        // Trích xuất userId từ claim hoặc authorization header
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        var userId = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
 
-        if (int.TryParse(userIdClaim, out var userId))
+        if (!int.TryParse(userId, out var parsedUserId))
         {
-            var account = await _context.Accounts.FindAsync(userId);
-            if (account != null)
+            return Unauthorized(new
             {
-                var user = new
-                {
-                    userId = account.UserId,
-                    fullName = account.FullName,
-                    phone = account.Phone,
-                    email = account.Email,
-                    dob = account.Dob?.ToString("yyyy-MM-dd"),
-                    gender = account.Gender,
-                    role = account.Role
-                };
-                return Ok(ApiResponse.Ok(user, "Lấy thông tin tài khoản thành công"));
-            }
+                success = false,
+                data = (object?)null,
+                message = "Invalid token"
+            });
         }
 
-        return Unauthorized(ApiResponse.Fail("Chưa đăng nhập hoặc phiên làm việc đã hết hạn."));
+        var profile = await _authService.GetProfileAsync(
+            parsedUserId);
+
+        if (profile == null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "User not found"
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = profile,
+            message = "User retrieved successfully"
+        });
     }
 
-    /// <summary>
-    /// PATCH /api/auth/me
-    /// </summary>
-    [HttpPatch("me")]
-    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+    [Authorize]
+    [HttpPost("logout")]
+    public IActionResult Logout()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        // JWT stateless: frontend cần xóa token khi đăng xuất.
+        return Ok(new
+        {
+            success = true,
+            data = (object?)null,
+            message = "Logout successful"
+        });
+    }
+
+    [Authorize]
+    [HttpPatch("me")]
+    public async Task<IActionResult> UpdateProfile(
+    [FromBody] UpdateProfileRequest request)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(userIdClaim, out int userId))
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Invalid user token"
+            });
+        }
+
+        bool updated = await _authService.UpdateProfileAsync(userId, request);
+
+        if (!updated)
+        {
+            return NotFound(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "User not found"
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                userId,
+                fullName = request.FullName.Trim(),
+                phone = request.Phone.Trim(),
+                dob = request.Dob,
+                gender = request.Gender
+            },
+            message = "Profile updated successfully"
+        });
+    }
+
+
+    [Authorize]
+    [HttpPatch("me/password")]
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest request)
+    {
+        var userIdClaim = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
 
         if (!int.TryParse(userIdClaim, out var userId))
         {
-            return Unauthorized(ApiResponse.Fail("Chưa đăng nhập."));
+            return Unauthorized(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Invalid user token"
+            });
         }
 
-        var account = await _context.Accounts.FindAsync(userId);
-        if (account == null)
+        var result = await _authService.ChangePasswordAsync(
+            userId,
+            request.CurrentPassword,
+            request.NewPassword);
+
+        if (result == null)
         {
-            return NotFound(ApiResponse.Fail("Không tìm thấy tài khoản."));
+            return NotFound(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "User not found"
+            });
         }
 
-        if (!string.IsNullOrWhiteSpace(request.FullName))
-            account.FullName = request.FullName.Trim();
-
-        if (!string.IsNullOrWhiteSpace(request.Phone))
-            account.Phone = request.Phone.Trim();
-
-        if (!string.IsNullOrWhiteSpace(request.Gender))
-            account.Gender = request.Gender.Trim();
-
-        if (!string.IsNullOrWhiteSpace(request.Dob) && DateOnly.TryParse(request.Dob, out var d))
-            account.Dob = d;
-
-        await _context.SaveChangesAsync();
-
-        var data = new
+        if (!result.Value)
         {
-            userId = account.UserId,
-            fullName = account.FullName,
-            phone = account.Phone,
-            email = account.Email,
-            dob = account.Dob?.ToString("yyyy-MM-dd"),
-            gender = account.Gender,
-            role = account.Role
-        };
+            return BadRequest(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Current password is incorrect"
+            });
+        }
 
-        return Ok(ApiResponse.Ok(data, "Cập nhật thông tin thành công"));
+        return Ok(new
+        {
+            success = true,
+            data = (object?)null,
+            message = "Password changed successfully"
+        });
     }
 }

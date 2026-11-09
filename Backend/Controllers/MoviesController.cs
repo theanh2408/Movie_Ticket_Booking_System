@@ -1,135 +1,63 @@
-using Backend.Data;
-using Backend.Models;
+
+using Backend.DTOs;
+using Backend.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/admin/movies")]
+[Authorize(Roles = "ADMIN")]
 public class MoviesController : ControllerBase
 {
-    private readonly AppDbContext _context;
+    private readonly MovieService _movieService;
 
-    public MoviesController(AppDbContext context)
+    public MoviesController(MovieService movieService)
     {
-        _context = context;
+        _movieService = movieService;
     }
 
-    /// <summary>
-    /// GET /api/movies?search=&genreId=&status=&page=1&pageSize=10
-    /// </summary>
-    [HttpGet]
-    public async Task<IActionResult> GetMovies(
-        [FromQuery] string? search,
-        [FromQuery] int? genreId,
-        [FromQuery] string? status,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+    [HttpPost]
+    public async Task<IActionResult> CreateMovie(
+        [FromBody] CreateMovieRequest request,
+        CancellationToken cancellationToken)
     {
-        if (page < 1) page = 1;
-        if (pageSize < 1) pageSize = 10;
-        if (pageSize > 100) pageSize = 100;
-
-        var query = _context.Movies
-            .Include(m => m.MovieGenres)
-                .ThenInclude(mg => mg.Genre)
-            .AsNoTracking()
-            .AsQueryable();
-
-        // Lọc theo search (tiêu đề phim)
-        if (!string.IsNullOrWhiteSpace(search))
+        try
         {
-            var searchLower = search.Trim().ToLower();
-            query = query.Where(m => m.Title != null && m.Title.ToLower().Contains(searchLower));
-        }
+            var movie = await _movieService.CreateAsync(
+                request,
+                cancellationToken);
 
-        // Lọc theo genreId
-        if (genreId.HasValue)
-        {
-            query = query.Where(m => m.MovieGenres.Any(mg => mg.GenreId == genreId.Value));
-        }
-
-        // Lọc theo status (NOW_SHOWING, COMING_SOON, etc.)
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var statusUpper = status.Trim().ToUpper();
-            query = query.Where(m => m.Status != null && m.Status.ToUpper() == statusUpper);
-        }
-
-        var totalItems = await query.CountAsync();
-        var totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
-
-        var movies = await query
-            .OrderByDescending(m => m.ReleaseDate)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(m => new
-            {
-                movieId = m.MovieId,
-                title = m.Title,
-                description = m.Description,
-                durationMinutes = m.Duration,
-                posterUrl = m.PosterUrl,
-                trailerUrl = m.TrailerUrl,
-                ageRating = m.AgeRating,
-                releaseDate = m.ReleaseDate.HasValue ? m.ReleaseDate.Value.ToString("yyyy-MM-dd") : null,
-                status = m.Status,
-                genres = m.MovieGenres.Select(mg => new
+            return Created(
+                $"/api/admin/movies/{movie.MovieId}",
+                new
                 {
-                    genreId = mg.GenreId,
-                    name = mg.Genre != null ? mg.Genre.GenreName : null
-                }).ToList()
-            })
-            .ToListAsync();
-
-        var result = new
-        {
-            items = movies,
-            page,
-            pageSize,
-            totalItems,
-            totalPages
-        };
-
-        return Ok(ApiResponse.Ok(result, "Lấy danh sách phim thành công"));
-    }
-
-    /// <summary>
-    /// GET /api/movies/{movieId}
-    /// </summary>
-    [HttpGet("{movieId:int}")]
-    public async Task<IActionResult> GetMovieById(int movieId)
-    {
-        var movie = await _context.Movies
-            .Include(m => m.MovieGenres)
-                .ThenInclude(mg => mg.Genre)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.MovieId == movieId);
-
-        if (movie == null)
-        {
-            return NotFound(ApiResponse.Fail("Không tìm thấy phim với ID đã cung cấp"));
+                    success = true,
+                    data = new
+                    {
+                        movieId = movie.MovieId,
+                        title = movie.Title,
+                        description = movie.Description,
+                        duration = movie.Duration,
+                        posterUrl = movie.PosterUrl,
+                        trailerUrl = movie.TrailerUrl,
+                        ageRating = movie.AgeRating,
+                        releaseDate = movie.ReleaseDate,
+                        status = movie.Status,
+                        genreIds = request.GenreIds.Distinct().ToList()
+                    },
+                    message = "Thêm phim thành công."
+                });
         }
-
-        var movieDetail = new
+        catch (ArgumentException ex)
         {
-            movieId = movie.MovieId,
-            title = movie.Title,
-            description = movie.Description,
-            durationMinutes = movie.Duration,
-            posterUrl = movie.PosterUrl,
-            trailerUrl = movie.TrailerUrl,
-            ageRating = movie.AgeRating,
-            releaseDate = movie.ReleaseDate.HasValue ? movie.ReleaseDate.Value.ToString("yyyy-MM-dd") : null,
-            status = movie.Status,
-            genres = movie.MovieGenres.Select(mg => new
+            return BadRequest(new
             {
-                genreId = mg.GenreId,
-                name = mg.Genre != null ? mg.Genre.GenreName : null
-            }).ToList()
-        };
-
-        return Ok(ApiResponse.Ok(movieDetail, "Lấy chi tiết phim thành công"));
+                success = false,
+                data = (object?)null,
+                message = ex.Message
+            });
+        }
     }
 }

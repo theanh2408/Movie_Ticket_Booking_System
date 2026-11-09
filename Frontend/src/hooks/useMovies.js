@@ -41,9 +41,9 @@ export const useMovies = (filters = {}) => {
       durationMinutes: m.durationMinutes ?? m.duration ?? 120,
       synopsis: m.description || m.synopsis || '',
       description: m.description || m.synopsis || '',
-      genre: Array.isArray(m.genres)
-        ? m.genres.map((g) => g.name || g).join(' • ')
-        : (m.genre || 'Hành động'),
+      genre: Array.isArray(m.genres) && m.genres.length > 0
+        ? m.genres.map((g) => (typeof g === 'object' && g !== null ? (g.genreName || g.name || '') : g)).filter(Boolean).join(' • ')
+        : (typeof m.genre === 'string' && m.genre.trim() ? m.genre : 'Hành động'),
       rating: m.rating || 9.2,
       voteCount: m.voteCount || '12.4k đánh giá',
       ageRating: m.ageRating || 'C13',
@@ -93,7 +93,7 @@ export const useMovies = (filters = {}) => {
 
       const res = await movieApi.getMovies(params);
       if (res && res.data) {
-        const rawItems = res.data.items || [];
+        const rawItems = Array.isArray(res.data) ? res.data : (res.data?.items || []);
         setItems(rawItems.map(normalizeMovie));
         setTotalItems(res.data.totalItems || rawItems.length);
         setTotalPages(res.data.totalPages || 1);

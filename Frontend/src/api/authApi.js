@@ -6,6 +6,7 @@ const authApi = {
   logout: () => axiosClient.post('/auth/logout'),
   getMe: () => axiosClient.get('/auth/me'),
   updateProfile: (data) => axiosClient.patch('/auth/me', data),
+  changePassword: (data) => axiosClient.patch('/auth/me/password', data),
 };
 
 export default authApi;

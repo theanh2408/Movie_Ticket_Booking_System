@@ -34,9 +34,9 @@ export const MovieCard = ({ movie, className = '' }) => {
       rawStatus === 'NOW-SHOWING' ||
       movie.statusTab === 'now-showing');
 
-  const genreText = Array.isArray(movie.genres)
-    ? movie.genres.map((g) => g.name || g).join(' • ')
-    : movie.genre || 'Hành động';
+  const genreText = Array.isArray(movie.genres) && movie.genres.length > 0
+    ? movie.genres.map((g) => (typeof g === 'object' && g !== null ? (g.genreName || g.name || '') : g)).filter(Boolean).join(' • ')
+    : (typeof movie.genre === 'string' && movie.genre.trim() ? movie.genre : 'Hành động');
 
   const badgeClass = ageBadgeVariants[ageRating] || 'bg-surface-high text-on-surface';
 

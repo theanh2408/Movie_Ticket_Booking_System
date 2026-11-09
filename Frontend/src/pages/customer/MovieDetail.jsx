@@ -71,7 +71,9 @@ export const MovieDetail = () => {
           backdrop: m.posterUrl || m.poster,
           duration: m.durationMinutes ?? m.duration ?? 120,
           synopsis: m.description || m.synopsis || '',
-          genre: Array.isArray(m.genres) ? m.genres.map((g) => g.name || g).join(' • ') : (m.genre || 'Hành động'),
+          genre: Array.isArray(m.genres) && m.genres.length > 0
+            ? m.genres.map((g) => (typeof g === 'object' && g !== null ? (g.genreName || g.name || '') : g)).filter(Boolean).join(' • ')
+            : (typeof m.genre === 'string' && m.genre.trim() ? m.genre : 'Hành động'),
           rating: 9.2,
           voteCount: '12.4k đánh giá',
           ageRating: m.ageRating || 'C13',
@@ -125,7 +127,7 @@ export const MovieDetail = () => {
       };
       const res = await showtimeApi.getShowtimes(params);
       if (res && res.data) {
-        setShowtimes(Array.isArray(res.data) ? res.data : []);
+        setShowtimes(Array.isArray(res.data) ? res.data : (res.data?.items || []));
       } else {
         setShowtimes([]);
       }

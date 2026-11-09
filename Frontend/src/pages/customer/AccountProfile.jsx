@@ -1,4 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import authApi from '../../api/authApi';
+import bookingApi from '../../api/bookingApi';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { Button } from '../../components/Button';
@@ -48,11 +50,97 @@ export const AccountProfile = () => {
 
   // Form states
   const [fullName, setFullName] = useState(user.name || '');
-  const [email] = useState(user.email || 'nguyenvanan@vibecinema.vn');
-  const [phone] = useState(user.phone || '0912 345 678');
+  const [phone, setPhone] = useState(user.phone || '0912 345 678');
+  const [email, setEmail] = useState(user.email || 'nguyenvanan@vibecinema.vn');
   const [gender, setGender] = useState(user.gender || 'Nam');
   const [dob, setDob] = useState(user.dob || '1995-08-15');
   const [avatar, setAvatar] = useState(user.avatar || '');
+
+  // Tải thông tin tài khoản thật từ Backend API
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await authApi.getMe();
+      if (res && res.data) {
+        const p = res.data;
+        setUser((prev) => ({
+          ...prev,
+          ...p,
+          name: p.fullName || prev.name,
+          phone: p.phone || prev.phone,
+        }));
+        if (p.fullName) setFullName(p.fullName);
+        if (p.phone) setPhone(p.phone);
+        if (p.email) setEmail(p.email);
+        if (p.gender) setGender(p.gender);
+        if (p.dob) setDob(p.dob.split('T')[0]);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải thông tin tài khoản:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  // Tải lịch sử giao dịch từ các đơn vé Backend
+  const fetchBackendTransactions = useCallback(async () => {
+    try {
+      const stored =
+        localStorage.getItem('vibe_cinema_user') ||
+        localStorage.getItem('Vibe Cinema_user');
+      const u = stored ? JSON.parse(stored) : null;
+      const cid = u?.customerId || u?.userId;
+      if (!cid) return;
+
+      const res = await bookingApi.getBookingHistory(cid);
+      if (res && res.data && Array.isArray(res.data)) {
+        const backendTxs = res.data.map((b) => {
+          const firstTicket = b.tickets?.[0];
+          const isPaid = b.status === 'PAID';
+          const isCancelled = b.status === 'CANCELLED';
+          const paymentDate = b.paymentDate ? new Date(b.paymentDate) : new Date(b.createdDate);
+          const timeStr = `${String(paymentDate.getDate()).padStart(2, '0')}/${String(paymentDate.getMonth() + 1).padStart(2, '0')}/${paymentDate.getFullYear()} ${String(paymentDate.getHours()).padStart(2, '0')}:${String(paymentDate.getMinutes()).padStart(2, '0')}`;
+
+          return {
+            id: `tx-${b.bookingId}`,
+            bookingId: b.bookingId,
+            invoiceCode: `HD-${b.bookingId}`,
+            transactionTime: timeStr,
+            paymentMethod: 'Đã thanh toán (Cổng mô phỏng)',
+            theaterInfo: 'Hệ thống Vibe Cinema',
+            theaterName: 'Vibe Cinema',
+            roomName: 'Phòng Chiếu 1',
+            movieTitle: firstTicket?.movieTitle || 'Vé Xem Phim',
+            seats: b.tickets?.map((t) => `Ghế ${t.seatId}`) || [],
+            ticketCount: b.tickets?.length || 1,
+            totalAmount: b.totalAmount || 0,
+            status: isCancelled ? 'Đã hoàn tiền' : (isPaid ? 'Thanh toán thành công' : b.status),
+            refundStatus: isCancelled ? 'Đã hoàn tiền' : null,
+            canDownloadInvoice: isPaid,
+            qrToken: b.qrToken,
+          };
+        });
+
+        const localStoredTx = localStorage.getItem('Vibe Cinema_transactions');
+        const localTxList = localStoredTx ? JSON.parse(localStoredTx) : [];
+        const combinedTxs = [...backendTxs];
+        localTxList.forEach((ltx) => {
+          if (!combinedTxs.some((tx) => tx.invoiceCode === ltx.invoiceCode)) {
+            combinedTxs.push(ltx);
+          }
+        });
+
+        setTransactions(combinedTxs);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải lịch sử giao dịch:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBackendTransactions();
+  }, [fetchBackendTransactions]);
 
   // Modal change password state
   const [showPasswordModal, setShowPasswordModal] = useState(false);

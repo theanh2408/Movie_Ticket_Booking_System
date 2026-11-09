@@ -334,7 +334,7 @@ export const Home = () => {
                   )}
                   type="button"
                 >
-                  {genre.name}
+                  {genre.genreName || genre.name}
                 </button>
               );
             })}

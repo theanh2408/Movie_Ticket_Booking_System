@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import bookingApi from '../../api/bookingApi';
 import { Link, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { cn } from '../../lib/cn';
@@ -117,6 +118,87 @@ export const MyTicket = () => {
       return [];
     }
   });
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Tải lịch sử vé thực tế từ Backend API
+  const fetchTickets = useCallback(async () => {
+    try {
+      const userStr =
+        localStorage.getItem('vibe_cinema_user') ||
+        localStorage.getItem('Vibe Cinema_user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const cid = user?.customerId || user?.userId;
+      if (!cid) return;
+
+      setIsLoading(true);
+      const res = await bookingApi.getBookingHistory(cid);
+      if (res && res.data && Array.isArray(res.data)) {
+        const backendTickets = res.data.map((b) => {
+          const firstTicket = b.tickets?.[0];
+          const isCancelled = b.status === 'CANCELLED';
+          const paymentDate = b.paymentDate ? new Date(b.paymentDate) : null;
+          const now = Date.now();
+          const canCancel =
+            !isCancelled &&
+            paymentDate &&
+            now - paymentDate.getTime() <= 30 * 60 * 1000;
+
+          const showDate = paymentDate
+            ? paymentDate.toLocaleDateString('vi-VN')
+            : new Date().toLocaleDateString('vi-VN');
+
+          const seatLabels = b.tickets?.map((t) => `Ghế ${t.seatId}`) || [];
+
+          return {
+            id: `booking-${b.bookingId}`,
+            bookingId: b.bookingId,
+            bookingCode: `CT-${b.bookingId}`,
+            movieTitle: firstTicket?.movieTitle || 'Vé Xem Phim Vibe Cinema',
+            moviePoster:
+              'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80',
+            theaterName: 'Hệ thống Vibe Cinema',
+            theaterAddress: 'Cụm rạp Vibe Cinema',
+            roomName: 'Phòng Chiếu 1',
+            format: '2D Digital Phụ Đề',
+            showDate: showDate,
+            showTime: '19:30',
+            showDateTime: b.createdDate,
+            seats: seatLabels.length > 0 ? seatLabels : ['Ghế đã chọn'],
+            totalPrice: b.totalAmount || 0,
+            paymentMethod: 'Đã thanh toán',
+            bookingDate: b.createdDate
+              ? new Date(b.createdDate).toLocaleDateString('vi-VN')
+              : 'Vừa xong',
+            status: isCancelled ? 'cancelled' : 'upcoming',
+            canCancel: canCancel,
+            qrValue: b.qrToken || `BOOKING-${b.bookingId}`,
+            qrToken: b.qrToken || `BOOKING-${b.bookingId}`,
+            barcodes: b.tickets?.map((t) => t.barcode).filter(Boolean) || [],
+          };
+        });
+
+        const localStored = localStorage.getItem('Vibe Cinema_tickets');
+        const localList = localStored ? JSON.parse(localStored) : [];
+        const combined = [...backendTickets];
+        localList.forEach((lt) => {
+          if (!combined.some((t) => t.bookingCode === lt.bookingCode)) {
+            combined.push(lt);
+          }
+        });
+
+        setTickets(combined);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải lịch sử vé từ Backend:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTickets();
+  }, [fetchTickets]);
 
   // State Step 2: Modal chi tiết vé đang chọn
   const [selectedTicket, setSelectedTicket] = useState(null);

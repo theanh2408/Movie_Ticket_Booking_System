@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { MainLayout } from '../../layouts/MainLayout';
 import { Button } from '../../components/Button';
-
+import bookingApi from '../../api/bookingApi';
 
 export const Checkout = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Booking state from SeatSelection or default matching mockup
+  // Booking state from SeatSelection or fallback
   const rawState = location.state;
   const bookingData = {
     movieId: rawState?.movieId || 'chien-binh-vu-tru',
@@ -36,14 +36,16 @@ export const Checkout = () => {
   const [paymentMethod, setPaymentMethod] = useState('vnpay');
 
   // Promo code state
-  const [promoCode, setPromoCode] = useState('CINETICKET');
+  const [promoCode, setPromoCode] = useState('WELCOME10');
   const [appliedPromo, setAppliedPromo] = useState(null);
   const [promoMessage, setPromoMessage] = useState('');
 
   // Current user
   const getUser = () => {
     try {
-      const stored = localStorage.getItem('Vibe Cinema_user');
+      const stored =
+        localStorage.getItem('vibe_cinema_user') ||
+        localStorage.getItem('Vibe Cinema_user');
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -54,21 +56,110 @@ export const Checkout = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [successTicket, setSuccessTicket] = useState(null);
 
+  // Backend Booking State
+  const [bookingId, setBookingId] = useState(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(600);
+  const [isHoldingSeats, setIsHoldingSeats] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+
   const selectedCount = bookingData.selectedSeats.length;
   const rawTotal = selectedCount * bookingData.pricePerSeat;
-  const discountAmount = appliedPromo ? 20000 : 0;
-  const finalTotal = Math.max(0, rawTotal - discountAmount);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [finalTotal, setFinalTotal] = useState(rawTotal);
 
-  const handleApplyPromo = () => {
+  // 1. Tự động gọi API Giữ ghế (Hold seats trong 10 phút) khi vào trang Checkout
+  useEffect(() => {
+    if (!currentUser) return;
+    const cid = currentUser.customerId || currentUser.userId;
+    if (!cid) return;
+    if (!rawState?.seatIds || rawState.seatIds.length === 0 || !rawState?.showtimeId) return;
+
+    let isMounted = true;
+    const holdSeats = async () => {
+      setIsHoldingSeats(true);
+      setBookingError('');
+      try {
+        const res = await bookingApi.createBooking(cid, {
+          showtimeId: Number(rawState.showtimeId),
+          seatIds: rawState.seatIds,
+        });
+        if (isMounted && res && res.data) {
+          const attempt = res.data;
+          const newBookingId = attempt.paymentAttemptId || attempt.bookingId;
+          setBookingId(newBookingId);
+          setRemainingSeconds(attempt.remainingSeconds || 600);
+          if (attempt.amount) {
+            setFinalTotal(attempt.amount);
+          }
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.error('Lỗi khi giữ ghế:', err);
+          setBookingError(err?.message || 'Không thể giữ ghế. Một hoặc nhiều ghế đã được đặt hoặc đang có người giữ.');
+        }
+      } finally {
+        if (isMounted) setIsHoldingSeats(false);
+      }
+    };
+
+    holdSeats();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.customerId, currentUser?.userId, rawState?.seatIds, rawState?.showtimeId]);
+
+  // 2. Countdown đếm ngược 10 phút (600s)
+  useEffect(() => {
+    if (remainingSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [remainingSeconds]);
+
+  // 3. Áp dụng mã khuyến mãi qua API Backend
+  const handleApplyPromo = async () => {
     if (!promoCode.trim()) {
       setPromoMessage('Vui lòng nhập mã ưu đãi.');
       return;
     }
-    if (promoCode.trim().toUpperCase() === 'CINETICKET') {
-      setAppliedPromo('CINETICKET');
-      setPromoMessage('Đã áp dụng mã CINETICKET: Giảm 20.000đ!');
-    } else {
-      setPromoMessage(`Mã "${promoCode}" không hợp lệ hoặc đã hết hạn.`);
+
+    const cid = currentUser?.customerId || currentUser?.userId;
+
+    if (!bookingId || !cid) {
+      // Mock fallback nếu người dùng chưa kết nối bookingId
+      if (promoCode.trim().toUpperCase() === 'WELCOME10') {
+        const disc = Math.round(rawTotal * 0.1);
+        setAppliedPromo('WELCOME10');
+        setDiscountAmount(disc);
+        setFinalTotal(Math.max(0, rawTotal - disc));
+        setPromoMessage(`Đã áp dụng mã WELCOME10: Giảm ${disc.toLocaleString('vi-VN')}đ!`);
+      } else {
+        setPromoMessage(`Mã "${promoCode}" không hợp lệ hoặc đã hết hạn.`);
+      }
+      return;
+    }
+
+    try {
+      const res = await bookingApi.applyPromotion(cid, bookingId, promoCode.trim());
+      if (res && res.data) {
+        const data = res.data;
+        setAppliedPromo(data.code || promoCode.trim());
+        const disc = data.discountAmount || 0;
+        setDiscountAmount(disc);
+        setFinalTotal(data.totalAmount !== undefined ? data.totalAmount : Math.max(0, rawTotal - disc));
+        setPromoMessage(`Đã áp dụng mã ${data.code}: Giảm ${disc.toLocaleString('vi-VN')}đ!`);
+      }
+    } catch (err) {
+      console.error('Lỗi áp dụng mã khuyến mãi:', err);
+      setPromoMessage(err?.message || `Mã "${promoCode}" không hợp lệ hoặc đã hết hạn.`);
     }
   };
 
@@ -80,27 +171,46 @@ export const Checkout = () => {
     }
   };
 
-  const handleConfirmPayment = () => {
+  // 4. Xác nhận & Thanh toán (gọi API /complete)
+  const handleConfirmPayment = async () => {
     if (!currentUser) {
       const wantLogin = window.confirm(
-        'Bạn chưa đăng nhập. Bạn có muốn chuyển đến trang Đăng Nhập để lưu vé vào tài khoản không?\n(Chọn Cancel để tiếp tục đặt vé với tư cách Khách)'
+        'Bạn cần đăng nhập để tiến hành đặt vé và lưu vé vào tài khoản. Chuyển đến trang Đăng Nhập ngay?'
       );
       if (wantLogin) {
-        navigate('/login', { state: { returnUrl: '/checkout', bookingData } });
+        navigate('/login', { state: { returnUrl: '/checkout', bookingData: rawState || bookingData } });
         return;
       }
+      return;
+    }
+
+    if (remainingSeconds === 0 && bookingId) {
+      alert('Thời gian giữ ghế đã hết hạn. Vui lòng quay lại chọn lại ghế.');
+      navigate(-1);
+      return;
     }
 
     setIsProcessing(true);
 
-    setTimeout(() => {
-      setIsProcessing(false);
-      const randomCode = 'CT-' + Math.floor(100000 + Math.random() * 900000);
+    try {
+      let qrToken = null;
+      let barcodes = [];
+
+      if (bookingId) {
+        const res = await bookingApi.completePaymentMock(bookingId, 'SUCCESS');
+        if (res) {
+          qrToken = res.qrToken;
+          barcodes = res.barcodes || [];
+        }
+      }
+
+      const randomCode = bookingId ? `CT-${bookingId}` : ('CT-' + Math.floor(100000 + Math.random() * 900000));
       const paymentMethodName =
         paymentMethod === 'vnpay' ? 'VNPAY-QR' : 'Ví Điện Tử MoMo / ShopeePay';
 
       const newTicket = {
-        id: 'ticket-' + Date.now(),
+        id: 'ticket-' + (bookingId || Date.now()),
+        bookingId: bookingId,
         bookingCode: randomCode,
         movieTitle: bookingData.movieTitle,
         moviePoster: bookingData.moviePoster,
@@ -116,7 +226,8 @@ export const Checkout = () => {
         bookingDate: 'Vừa xong',
         status: 'confirmed',
         canCancel: true,
-        qrValue: `VibeCinema_${randomCode}_${bookingData.selectedSeats.join('_')}`,
+        qrToken: qrToken || `VibeCinema_${randomCode}_${bookingData.selectedSeats.join('_')}`,
+        barcodes: barcodes,
       };
 
       try {
@@ -125,7 +236,7 @@ export const Checkout = () => {
         const updated = [newTicket, ...list];
         localStorage.setItem('Vibe Cinema_tickets', JSON.stringify(updated));
 
-        // Sync with transaction history
+        // Đồng bộ với lịch sử giao dịch local
         const txStored = localStorage.getItem('Vibe Cinema_transactions');
         const txList = txStored ? JSON.parse(txStored) : [];
         const now = new Date();
@@ -151,12 +262,54 @@ export const Checkout = () => {
       }
 
       setSuccessTicket(newTicket);
-    }, 1200);
+    } catch (err) {
+      console.error('Lỗi khi hoàn tất thanh toán:', err);
+      alert(err?.message || 'Không thể hoàn tất thanh toán. Vui lòng thử lại.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
+  const minutesRemaining = Math.floor(remainingSeconds / 60);
+  const secondsRemaining = String(remainingSeconds % 60).padStart(2, '0');
 
   return (
     <MainLayout>
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-6xl mx-auto">
+        {/* Countdown Timer Banner */}
+        {!successTicket && (
+          <div className="mb-6 p-4 rounded-2xl bg-surface-low border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-amber-400 text-2xl animate-spin">
+                timer
+              </span>
+              <div>
+                <span className="text-sm font-semibold text-white">Thời gian giữ vé:</span>
+                <p className="text-xs text-outline">
+                  Vui lòng hoàn tất thanh toán trước khi thời gian giữ ghế kết thúc.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`font-mono text-xl sm:text-2xl font-black px-4 py-1.5 rounded-xl border ${
+                remainingSeconds < 120 
+                  ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}>
+                {minutesRemaining}:{secondsRemaining}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {bookingError && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 text-sm flex items-center gap-3">
+            <span className="material-symbols-outlined text-red-400">error</span>
+            <span>{bookingError}</span>
+          </div>
+        )}
+
         {successTicket ? (
           /* SUCCESS VIEW (Step 4 Success) */
           <div className="py-8 space-y-6 max-w-2xl mx-auto">
@@ -197,7 +350,7 @@ export const Checkout = () => {
 
                 <div className="text-right">
                   <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-900/40">
-                    ĐÃ XÁC NHẬN
+                    ĐÃ THANH TOÁN
                   </span>
                   <div className="font-headline text-xs text-white font-bold mt-1">
                     #{successTicket.bookingCode}
@@ -233,7 +386,8 @@ export const Checkout = () => {
                     Vé Điện Tử Mã QR Một Chiều
                   </div>
                   <p className="text-[11px] text-zinc-400 max-w-sm">
-                    Quét trực tiếp tại cổng rạp. Hỗ trợ hoàn hủy vé trước giờ chiếu 120 phút.
+                    Mã Token: <span className="font-mono text-amber-400">{successTicket.qrToken}</span>.
+                    Quét trực tiếp tại cổng rạp. Hỗ trợ hoàn hủy vé trong vòng 30 phút sau khi thanh toán.
                   </p>
                 </div>
 
@@ -415,7 +569,7 @@ export const Checkout = () => {
                       type="text"
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
-                      placeholder="CINETICKET"
+                      placeholder="Nhập mã ưu đãi (VD: WELCOME10, VIBE20K)"
                       className="flex-1 bg-[#121620] border border-zinc-800 focus:border-zinc-600 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none transition-colors"
                     />
                     <button
@@ -525,7 +679,7 @@ export const Checkout = () => {
 
                     <button
                       type="button"
-                      disabled={isProcessing}
+                      disabled={isProcessing || isHoldingSeats || remainingSeconds === 0}
                       onClick={handleConfirmPayment}
                       className="w-full bg-[#e50914] hover:bg-[#f40612] disabled:opacity-50 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-2 text-base transition-all duration-200 shadow-lg shadow-red-900/30 active:scale-[0.99] cursor-pointer"
                     >
@@ -533,14 +687,20 @@ export const Checkout = () => {
                         {isProcessing ? 'hourglass_top' : 'lock'}
                       </span>
                       <span>
-                        {isProcessing ? 'Đang Xử Lý Đặt Vé...' : 'Xác Nhận & Thanh Toán'}
+                        {isHoldingSeats
+                          ? 'Đang giữ ghế...'
+                          : isProcessing
+                          ? 'Đang Xử Lý Thanh Toán...'
+                          : remainingSeconds === 0
+                          ? 'Đã Hết Thời Gian Giữ Ghế'
+                          : 'Xác Nhận & Thanh Toán'}
                       </span>
                     </button>
 
                     <p className="text-xs text-zinc-400 text-center flex items-center justify-center gap-1.5 pt-1">
                       <span>Bảo mật chuẩn PCI-DSS 256-bit</span>
                       <span>•</span>
-                      <span>Hỗ trợ hoàn hủy trước 120 phút</span>
+                      <span>Hỗ trợ hoàn hủy trong vòng 30 phút sau khi thanh toán</span>
                     </p>
                   </div>
                 </div>

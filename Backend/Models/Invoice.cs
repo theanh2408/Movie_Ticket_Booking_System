@@ -1,24 +1,17 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System;
+using System.Collections.Generic;
 
 namespace Backend.Models;
 
-[Table("Invoice")]
-public class Invoice
+public partial class Invoice
 {
-    [Key]
-    [Column("InvoiceID")]
     public int InvoiceId { get; set; }
 
     public DateTime? CreateDate { get; set; }
 
-    [MaxLength(50)]
     public string? Status { get; set; }
 
-    [Column(TypeName = "decimal(18, 2)")]
     public decimal? TotalPrice { get; set; }
-
-    [Column("BookingID")]
     public int? BookingId { get; set; }
 
     public virtual Booking? Booking { get; set; }

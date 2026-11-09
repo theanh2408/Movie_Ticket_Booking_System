@@ -11,13 +11,28 @@ const axiosClient = axios.create({
   },
 });
 
-// 1. Request Interceptor: Tự động đính kèm JWT Bearer Token vào mọi API
+// 1. Request Interceptor: Tự động đính kèm JWT Bearer Token và Idempotency-Key
 axiosClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Tự động gắn Idempotency-Key dạng GUID khi tạo đơn đặt vé nếu chưa có
+    if (config.method === 'post' && config.url?.includes('/bookings') && !config.headers['Idempotency-Key']) {
+      try {
+        config.headers['Idempotency-Key'] = crypto.randomUUID();
+      } catch {
+        // Fallback tạo GUID nếu crypto.randomUUID không khả dụng
+        config.headers['Idempotency-Key'] = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -29,9 +44,12 @@ axiosClient.interceptors.response.use(
     return response.data; // Trả thẳng về object { success: true, data: ..., message: ... }
   },
   (error) => {
-    // Nếu lỗi 401 (Hết hạn token hoặc chưa đăng nhập) -> Xóa token
+    // Nếu lỗi 401 (Hết hạn token hoặc chưa đăng nhập) -> Xóa token và thông báo
     if (error.response && error.response.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('vibe_cinema_user');
+      localStorage.removeItem('Vibe Cinema_user');
+      window.dispatchEvent(new Event('authChange'));
     }
     return Promise.reject(error.response ? error.response.data : error);
   }

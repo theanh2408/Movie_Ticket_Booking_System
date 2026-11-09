@@ -1,61 +1,76 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using MovieTicketBooking.Api.Data;
+using MovieTicketBooking.Api.Services;
 using Backend.Data;
 using Microsoft.EntityFrameworkCore;
+using Backend.Repositories;
+using Backend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Đăng ký AppDbContext với DefaultConnection từ appsettings.json
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddControllers();
+builder.Services.AddMemoryCache();
 
-// Cấu hình Controllers và tuần tự hóa JSON
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
-    });
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
 
-// Cấu hình Swagger / OpenAPI
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-builder.Services.AddOpenApi();
-
-// Cấu hình CORS cho phép http://localhost:5173 và http://localhost:3000
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    options.AddPolicy("Frontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
 });
 
+builder.Services.AddSingleton<DbConnectionFactory>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<MovieRepository>();
+builder.Services.AddScoped<MovieService>();
+builder.Services.AddScoped<PaymentService>();
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")));
+
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException(
+        "JWT key is missing. Set Jwt:Key via user-secrets or the Jwt__Key environment variable.");
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+
+                ValidateAudience = true,
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtKey)),
+
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
+    });
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
-// Kích hoạt CORS trước Controllers
-app.UseCors("AllowFrontend");
+app.UseCors("Frontend");
 
-// Kích hoạt Swagger UI trong môi trường Development
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Movie Ticket Booking API v1");
-        c.RoutePrefix = "swagger"; // Đường dẫn truy cập: http://localhost:5231/swagger
-    });
-    app.MapOpenApi();
-}
-else
-{
-    app.UseHttpsRedirection();
-}
+app.UseAuthentication();
+app.UseAuthorization();
 
-// Map Controllers
 app.MapControllers();
-
-// Tự động seed dữ liệu mẫu khi khởi động nếu database đang trống
-await DbSeeder.SeedAsync(app.Services);
 
 app.Run();

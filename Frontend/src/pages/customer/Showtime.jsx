@@ -103,7 +103,7 @@ export const Showtime = () => {
       };
       const res = await showtimeApi.getShowtimes(params);
       if (res && res.data) {
-        setShowtimes(Array.isArray(res.data) ? res.data : []);
+        setShowtimes(Array.isArray(res.data) ? res.data : (res.data?.items || []));
       } else {
         setShowtimes([]);
       }
