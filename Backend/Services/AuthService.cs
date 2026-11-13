@@ -1,210 +1,133 @@
-using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.Data.SqlClient;
+using Backend.Data;
+using Backend.DTOs;
+using Backend.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using MovieTicketBooking.Api.Data;
-using MovieTicketBooking.Api.DTOs;
 
-namespace MovieTicketBooking.Api.Services;
+namespace Backend.Services;
 
 public class AuthService
 {
-    private readonly DbConnectionFactory _connectionFactory;
+    private readonly ApplicationDbContext _context;
     private readonly IConfiguration _configuration;
 
     public AuthService(
-        DbConnectionFactory connectionFactory,
+        ApplicationDbContext context,
         IConfiguration configuration)
     {
-        _connectionFactory = connectionFactory;
+        _context = context;
         _configuration = configuration;
     }
 
-    public async Task<(bool Success, string Message, object? User)>
-        RegisterAsync(RegisterRequest request)
+    public async Task<(bool Success, string Message, object? User)> RegisterAsync(RegisterRequest request)
     {
-        await using var connection =
-            _connectionFactory.CreateConnection();
+        var email = request.Email.Trim().ToLowerInvariant();
+        var phone = request.Phone.Trim();
 
-        await connection.OpenAsync();
+        var existingAccount = await _context.Accounts
+            .AnyAsync(a => a.Email != null && a.Email.ToLower() == email);
 
-        const string checkSql = """
-            SELECT COUNT(1)
-            FROM dbo.Account
-            WHERE Email = @Email;
-            """;
-
-        await using (var checkCommand =
-            new SqlCommand(checkSql, connection))
+        if (existingAccount)
         {
-            checkCommand.Parameters.AddWithValue(
-                "@Email", request.Email.Trim());
-
-            var result = await checkCommand.ExecuteScalarAsync();
-            var count = Convert.ToInt32(result);
-
-            if (count > 0)
-            {
-                return (false, "Email already exists", null);
-            }
+            return (false, "Email đã được sử dụng.", null);
         }
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(
-            request.Password);
+        var existingPhone = await _context.Accounts
+            .AnyAsync(a => a.Phone == phone);
 
-        const string insertSql = """
-            INSERT INTO dbo.Account
-                (FullName, Phone, Email, DOB, Gender, PasswordHash, Role)
-            OUTPUT
-                INSERTED.UserID,
-                INSERTED.FullName,
-                INSERTED.Phone,
-                INSERTED.Email,
-                INSERTED.DOB,
-                INSERTED.Gender,
-                INSERTED.Role
-            VALUES
-                (@FullName, @Phone, @Email, @DOB, @Gender,
-                 @PasswordHash, @Role);
-            """;
-
-        await using var insertCommand =
-            new SqlCommand(insertSql, connection);
-
-        insertCommand.Parameters.AddWithValue(
-            "@FullName", request.FullName.Trim());
-
-        insertCommand.Parameters.AddWithValue(
-            "@Phone", request.Phone.Trim());
-
-        insertCommand.Parameters.AddWithValue(
-            "@Email", request.Email.Trim());
-
-        insertCommand.Parameters.AddWithValue(
-            "@DOB", (object?)request.Dob?.Date ?? DBNull.Value);
-
-        insertCommand.Parameters.AddWithValue(
-            "@Gender", (object?)request.Gender ?? DBNull.Value);
-
-        insertCommand.Parameters.AddWithValue(
-            "@PasswordHash", passwordHash);
-
-        insertCommand.Parameters.AddWithValue(
-            "@Role", "CUSTOMER");
-
-        await using var reader =
-            await insertCommand.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync())
+        if (existingPhone)
         {
-            throw new InvalidOperationException(
-                "Could not retrieve the registered account.");
+            return (false, "Số điện thoại đã được sử dụng.", null);
         }
 
-        var registeredUserId = Convert.ToInt32(reader["UserID"]);
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+
+        var account = new Account
+        {
+            FullName = request.FullName.Trim(),
+            Phone = phone,
+            Email = email,
+            Dob = request.Dob.HasValue ? DateOnly.FromDateTime(request.Dob.Value) : null,
+            Gender = string.IsNullOrWhiteSpace(request.Gender) ? null : request.Gender.Trim(),
+            PasswordHash = passwordHash,
+            Role = "CUSTOMER"
+        };
+
+        _context.Accounts.Add(account);
+        await _context.SaveChangesAsync();
+
+        var customer = new Customer
+        {
+            UserId = account.UserId
+        };
+        _context.Customers.Add(customer);
+        await _context.SaveChangesAsync();
+
         var user = new
         {
-            userId = registeredUserId,
-            fullName = reader["FullName"] as string,
-            phone = reader["Phone"] as string,
-            email = reader["Email"] as string,
-            dob = reader["DOB"] == DBNull.Value
-                ? (DateTime?)null
-                : Convert.ToDateTime(reader["DOB"]),
-            gender = reader["Gender"] == DBNull.Value
-                ? null
-                : reader["Gender"] as string,
-            role = reader["Role"] as string
+            userId = account.UserId,
+            customerId = customer.CustomerId,
+            fullName = account.FullName,
+            phone = account.Phone,
+            email = account.Email,
+            dob = account.Dob.HasValue ? account.Dob.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null,
+            gender = account.Gender,
+            role = account.Role
         };
 
-        await reader.DisposeAsync();
-
-        await using var customerCommand = new SqlCommand(
-            "INSERT INTO dbo.Customer (UserID) VALUES (@UserID);", connection);
-        customerCommand.Parameters.Add("@UserID", SqlDbType.Int).Value = registeredUserId;
-        await customerCommand.ExecuteNonQueryAsync();
-
-        return (true, "Registration successful", user);
+        return (true, "Đăng ký tài khoản thành công.", user);
     }
 
-    public async Task<(
-        string Token,
-        object User,
-        int ExpiresIn
-    )?> LoginAsync(LoginRequest request)
+    public async Task<(string Token, object User, int ExpiresIn)?> LoginAsync(LoginRequest request)
     {
-        await using var connection =
-            _connectionFactory.CreateConnection();
+        var email = request.Email.Trim().ToLowerInvariant();
 
-        await connection.OpenAsync();
+        var account = await _context.Accounts
+            .Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Email != null && a.Email.ToLower() == email);
 
-        const string sql = """
-            SELECT UserID, FullName, Email, PasswordHash, Role
-            FROM dbo.Account
-            WHERE Email = @Email;
-            """;
-
-        await using var command =
-            new SqlCommand(sql, connection);
-
-        command.Parameters.AddWithValue(
-            "@Email", request.Email.Trim());
-
-        await using var reader =
-            await command.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync())
+        if (account == null || string.IsNullOrEmpty(account.PasswordHash))
         {
             return null;
         }
 
-        var passwordHash = reader["PasswordHash"] as string;
-
-        if (string.IsNullOrEmpty(passwordHash) ||
-            !BCrypt.Net.BCrypt.Verify(
-                request.Password, passwordHash))
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
         {
             return null;
         }
 
-        var userId = Convert.ToInt32(reader["UserID"]);
-        var fullName = reader["FullName"] as string;
-        var email = reader["Email"] as string ?? "";
-        var role = reader["Role"] as string ?? "CUSTOMER";
-
-        var key = _configuration["Jwt:Key"];
-
-        if (string.IsNullOrWhiteSpace(key))
+        // Đảm bảo account role Customer luôn có bản ghi Customer
+        if (account.Role == "CUSTOMER" && account.Customer == null)
         {
-            throw new InvalidOperationException(
-                "JWT key is missing. Set Jwt:Key via user-secrets or the Jwt__Key environment variable.");
+            var customer = new Customer { UserId = account.UserId };
+            _context.Customers.Add(customer);
+            await _context.SaveChangesAsync();
+            account.Customer = customer;
         }
 
+        var customerId = account.Customer?.CustomerId ?? 0;
+
+        var key = _configuration["Jwt:Key"]
+            ?? throw new InvalidOperationException("JWT key is missing.");
         var issuer = _configuration["Jwt:Issuer"];
         var audience = _configuration["Jwt:Audience"];
+        var expiresMinutes = int.Parse(_configuration["Jwt:ExpiresMinutes"] ?? "1440");
 
-        var expiresMinutes = int.Parse(
-            _configuration["Jwt:ExpiresMinutes"] ?? "60");
-
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(
-                ClaimTypes.NameIdentifier,
-                userId.ToString()),
-            new Claim(ClaimTypes.Name, fullName ?? ""),
-            new Claim(ClaimTypes.Email, email),
-            new Claim(ClaimTypes.Role, role)
+            new(ClaimTypes.NameIdentifier, account.UserId.ToString()),
+            new(ClaimTypes.Name, account.FullName ?? ""),
+            new(ClaimTypes.Email, account.Email ?? ""),
+            new(ClaimTypes.Role, account.Role ?? "CUSTOMER"),
+            new("CustomerId", customerId.ToString())
         };
 
-        var signingKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(key));
-
-        var credentials = new SigningCredentials(
-            signingKey,
-            SecurityAlgorithms.HmacSha256);
+        var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
+        var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
             issuer: issuer,
@@ -215,10 +138,12 @@ public class AuthService
 
         var user = new
         {
-            userId,
-            fullName,
-            email,
-            role
+            userId = account.UserId,
+            customerId = customerId,
+            fullName = account.FullName,
+            email = account.Email,
+            phone = account.Phone,
+            role = account.Role
         };
 
         return (
@@ -228,149 +153,55 @@ public class AuthService
         );
     }
 
-    public async Task<bool> UpdateProfileAsync(
-    int userId,
-    UpdateProfileRequest request)
+    public async Task<bool> UpdateProfileAsync(int userId, UpdateProfileRequest request)
     {
-        using var connection = _connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        var account = await _context.Accounts.FirstOrDefaultAsync(a => a.UserId == userId);
+        if (account == null) return false;
 
-        const string sql = """
-        UPDATE dbo.Account
-        SET FullName = @FullName,
-            Phone = @Phone,
-            DOB = @DOB,
-            Gender = @Gender
-        WHERE UserID = @UserID;
-        """;
+        account.FullName = request.FullName.Trim();
+        account.Phone = request.Phone.Trim();
+        account.Dob = request.Dob.HasValue ? DateOnly.FromDateTime(request.Dob.Value) : null;
+        account.Gender = string.IsNullOrWhiteSpace(request.Gender) ? null : request.Gender.Trim();
 
-        using var command = new SqlCommand(sql, connection);
-
-        command.Parameters.Add("@FullName", SqlDbType.NVarChar, 100)
-            .Value = request.FullName.Trim();
-
-        command.Parameters.Add("@Phone", SqlDbType.NVarChar, 20)
-            .Value = request.Phone.Trim();
-
-        command.Parameters.Add("@DOB", SqlDbType.Date)
-            .Value = request.Dob.HasValue
-                ? request.Dob.Value.Date
-                : DBNull.Value;
-
-        command.Parameters.Add("@Gender", SqlDbType.NVarChar, 20)
-            .Value = string.IsNullOrWhiteSpace(request.Gender)
-                ? DBNull.Value
-                : request.Gender.Trim();
-
-        command.Parameters.Add("@UserID", SqlDbType.Int).Value = userId;
-
-        int rowsAffected = await command.ExecuteNonQueryAsync();
-
-        return rowsAffected > 0;
+        await _context.SaveChangesAsync();
+        return true;
     }
 
-
-    public async Task<bool?> ChangePasswordAsync(
-        int userId,
-        string currentPassword,
-        string newPassword)
+    public async Task<bool?> ChangePasswordAsync(int userId, string currentPassword, string newPassword)
     {
-        await using var connection =
-            _connectionFactory.CreateConnection();
+        var account = await _context.Accounts.FirstOrDefaultAsync(a => a.UserId == userId);
+        if (account == null) return null;
 
-        await connection.OpenAsync();
-
-        const string sql = """
-        SELECT PasswordHash
-        FROM dbo.Account
-        WHERE UserID = @UserID;
-        """;
-
-        string? passwordHash;
-
-        await using (var command = new SqlCommand(sql, connection))
-        {
-            command.Parameters.Add("@UserID", SqlDbType.Int)
-                .Value = userId;
-
-            var result = await command.ExecuteScalarAsync();
-
-            if (result == null || result == DBNull.Value)
-            {
-                return null;
-            }
-
-            passwordHash = result as string;
-        }
-
-        if (string.IsNullOrWhiteSpace(passwordHash) ||
-            !BCrypt.Net.BCrypt.Verify(currentPassword, passwordHash))
+        if (string.IsNullOrWhiteSpace(account.PasswordHash) ||
+            !BCrypt.Net.BCrypt.Verify(currentPassword, account.PasswordHash))
         {
             return false;
         }
 
-        var newPasswordHash =
-            BCrypt.Net.BCrypt.HashPassword(newPassword);
-
-        const string updateSql = """
-        UPDATE dbo.Account
-        SET PasswordHash = @PasswordHash
-        WHERE UserID = @UserID;
-        """;
-
-        await using var updateCommand =
-            new SqlCommand(updateSql, connection);
-
-        updateCommand.Parameters.Add(
-            "@PasswordHash", SqlDbType.NVarChar, 255)
-            .Value = newPasswordHash;
-
-        updateCommand.Parameters.Add("@UserID", SqlDbType.Int)
-            .Value = userId;
-
-        return await updateCommand.ExecuteNonQueryAsync() > 0;
+        account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        await _context.SaveChangesAsync();
+        return true;
     }
-
 
     public async Task<object?> GetProfileAsync(int userId)
     {
-        await using var connection =
-            _connectionFactory.CreateConnection();
+        var account = await _context.Accounts
+            .AsNoTracking()
+            .Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.UserId == userId);
 
-        await connection.OpenAsync();
-
-        const string sql = """
-        SELECT UserID, FullName, Phone, Email, DOB, Gender, Role
-        FROM dbo.Account
-        WHERE UserID = @UserID;
-        """;
-
-        await using var command = new SqlCommand(sql, connection);
-
-        command.Parameters.Add("@UserID", SqlDbType.Int).Value = userId;
-
-        await using var reader = await command.ExecuteReaderAsync();
-
-        if (!await reader.ReadAsync())
-        {
-            return null;
-        }
+        if (account == null) return null;
 
         return new
         {
-            userId = Convert.ToInt32(reader["UserID"]),
-            fullName = reader["FullName"] as string,
-            phone = reader["Phone"] == DBNull.Value
-                ? null
-                : reader["Phone"] as string,
-            email = reader["Email"] as string,
-            dob = reader["DOB"] == DBNull.Value
-                ? (DateTime?)null
-                : Convert.ToDateTime(reader["DOB"]),
-            gender = reader["Gender"] == DBNull.Value
-                ? null
-                : reader["Gender"] as string,
-            role = reader["Role"] as string
+            userId = account.UserId,
+            customerId = account.Customer?.CustomerId ?? 0,
+            fullName = account.FullName,
+            phone = account.Phone,
+            email = account.Email,
+            dob = account.Dob.HasValue ? account.Dob.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null,
+            gender = account.Gender,
+            role = account.Role
         };
     }
 }

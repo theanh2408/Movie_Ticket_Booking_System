@@ -45,18 +45,33 @@ public class CustomerBookingsController : ControllerBase
         var userId = await GetOwnedUserIdAsync(customerId);
         if (userId == null) return NotFound(new { success = false, message = "Không tìm thấy khách hàng." });
 
-        var booking = await _context.Bookings.Include(b => b.Customer).Include(b => b.Tickets).Include(b => b.Payments)
+        var booking = await _context.Bookings
+            .Include(b => b.Customer)
+            .Include(b => b.Tickets)
+            .Include(b => b.Payments)
+            .Include(b => b.BookingQRs)
             .FirstOrDefaultAsync(b => b.BookingId == bookingId && b.CustomerId == customerId, cancellationToken);
+
         if (booking == null) return NotFound(new { success = false, message = "Không tìm thấy đơn đặt vé." });
+
+        if (booking.Status == "CANCELLED") return Conflict(new { success = false, message = "Đơn đặt vé này đã được hủy trước đó." });
+
         var payment = booking.Payments.Where(p => p.PaymentStatus == "SUCCESS" && p.PaymentDate.HasValue)
             .OrderByDescending(p => p.PaymentDate).FirstOrDefault();
         if (payment == null) return Conflict(new { success = false, message = "Đơn đặt vé chưa thanh toán thành công." });
+
+        // Nghiệp vụ: Không thể hủy vé đã được in cứng tại quầy
+        if (booking.Tickets.Any(t => t.Status == "PRINTED"))
+            return Conflict(new { success = false, message = "Vé đã được in tại quầy, không thể hủy." });
+
+        // Nghiệp vụ: Chỉ được hủy trong vòng 30 phút sau khi thanh toán
         if (DateTime.UtcNow > payment.PaymentDate!.Value.AddMinutes(30))
             return Conflict(new { success = false, message = "Chỉ được hủy vé trong vòng 30 phút sau khi thanh toán thành công." });
-        if (booking.Status == "CANCELLED") return Conflict(new { success = false, message = "Đơn đặt vé đã được hủy." });
 
         booking.Status = "CANCELLED";
         foreach (var ticket in booking.Tickets) ticket.Status = "CANCELLED";
+        foreach (var qr in booking.BookingQRs) qr.Status = "Revoked";
+
         await _context.SaveChangesAsync(cancellationToken);
         return Ok(new { success = true, data = new { bookingId, status = booking.Status }, message = "Hủy đơn đặt vé thành công." });
     }

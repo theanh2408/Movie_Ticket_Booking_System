@@ -1,19 +1,18 @@
-
+using Backend.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using MovieTicketBooking.Api.Data;
+using Microsoft.EntityFrameworkCore;
 
-namespace MovieTicketBooking.Api.Controllers;
+namespace Backend.Controllers;
 
 [ApiController]
 [Route("api/db-health")]
-public class DbHealthController : ControllerBase
+public class HealthController : ControllerBase
 {
-    private readonly DbConnectionFactory _connectionFactory;
+    private readonly ApplicationDbContext _context;
 
-    public DbHealthController(DbConnectionFactory connectionFactory)
+    public HealthController(ApplicationDbContext context)
     {
-        _connectionFactory = connectionFactory;
+        _context = context;
     }
 
     [HttpGet]
@@ -21,28 +20,29 @@ public class DbHealthController : ControllerBase
     {
         try
         {
-            await using var connection =
-                _connectionFactory.CreateConnection();
-
-            await connection.OpenAsync();
-
-            await using var command =
-                new SqlCommand("SELECT DB_NAME()", connection);
-
-            var databaseName = (string?)await command.ExecuteScalarAsync();
+            var canConnect = await _context.Database.CanConnectAsync();
+            if (!canConnect)
+            {
+                return StatusCode(503, new
+                {
+                    status = "error",
+                    message = "Không thể kết nối cơ sở dữ liệu."
+                });
+            }
 
             return Ok(new
             {
                 status = "ok",
-                database = databaseName
+                database = _context.Database.GetDbConnection().Database,
+                provider = _context.Database.ProviderName
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             return StatusCode(503, new
             {
                 status = "error",
-                message = "Database connection failed"
+                message = ex.Message
             });
         }
     }

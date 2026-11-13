@@ -1,4 +1,3 @@
-
 using Backend.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +16,6 @@ public class CustomerShowtimesController : ControllerBase
     }
 
     // GET: api/showtimes
-    // GET: api/showtimes?movieId=1&cinemaId=1&date=2026-11-03
     [HttpGet]
     public async Task<IActionResult> GetShowtimes(
         [FromQuery] int? movieId,
@@ -26,7 +24,6 @@ public class CustomerShowtimesController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
-        // Validate pagination
         if (page < 1 || pageSize < 1 || pageSize > 100)
         {
             return BadRequest(new
@@ -43,24 +40,21 @@ public class CustomerShowtimesController : ControllerBase
             .Include(s => s.Room)
                 .ThenInclude(r => r!.Cinema)
             .Where(s =>
+                s.Status == "ACTIVE" &&
                 s.Movie != null &&
                 s.Room != null &&
                 s.Room.Cinema != null);
 
-        // Filter by movie
         if (movieId.HasValue)
         {
             query = query.Where(s => s.MovieId == movieId.Value);
         }
 
-        // Filter by cinema
         if (cinemaId.HasValue)
         {
-            query = query.Where(s =>
-                s.Room!.CinemaId == cinemaId.Value);
+            query = query.Where(s => s.Room!.CinemaId == cinemaId.Value);
         }
 
-        // Filter by date
         if (date.HasValue)
         {
             query = query.Where(s => s.Date == date.Value);
@@ -101,8 +95,7 @@ public class CustomerShowtimesController : ControllerBase
                 page,
                 pageSize,
                 totalItems,
-                totalPages = (int)Math.Ceiling(
-                    totalItems / (double)pageSize)
+                totalPages = (int)Math.Ceiling(totalItems / (double)pageSize)
             },
             message = "Lấy danh sách suất chiếu thành công."
         });
@@ -122,34 +115,15 @@ public class CustomerShowtimesController : ControllerBase
             {
                 showtimeId = s.ShowtimeId,
                 movieId = s.MovieId,
-
-                movieTitle = s.Movie != null
-                    ? s.Movie.Title
-                    : null,
-
-                movieDuration = s.Movie != null
-                    ? s.Movie.Duration
-                    : (int?)null,
-
-                cinemaId = s.Room != null
-                    ? s.Room.CinemaId
-                    : null,
-
-                cinemaName = s.Room != null &&
-                             s.Room.Cinema != null
-                    ? s.Room.Cinema.CinemaName
-                    : null,
-
+                movieTitle = s.Movie != null ? s.Movie.Title : null,
+                movieDuration = s.Movie != null ? s.Movie.Duration : (int?)null,
+                cinemaId = s.Room != null ? s.Room.CinemaId : null,
+                cinemaName = s.Room != null && s.Room.Cinema != null ? s.Room.Cinema.CinemaName : null,
                 roomId = s.RoomId,
-
-                roomName = s.Room != null
-                    ? s.Room.RoomName
-                    : null,
-
+                roomName = s.Room != null ? s.Room.RoomName : null,
                 startTime = s.Date.HasValue && s.StartHour.HasValue
                     ? s.Date.Value.ToDateTime(s.StartHour.Value)
                     : (DateTime?)null,
-
                 basePrice = s.BasePrice,
                 status = s.Status
             })
@@ -165,6 +139,16 @@ public class CustomerShowtimesController : ControllerBase
             });
         }
 
+        if (showtime.status != "ACTIVE")
+        {
+            return BadRequest(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Suất chiếu này đã bị hủy hoặc không còn hoạt động."
+            });
+        }
+
         return Ok(new
         {
             success = true,
@@ -177,11 +161,11 @@ public class CustomerShowtimesController : ControllerBase
     [HttpGet("{showtimeId:int}/seats")]
     public async Task<IActionResult> GetShowtimeSeats(int showtimeId)
     {
-        // Check showtime existence
-        var exists = await _context.Showtimes
-            .AnyAsync(s => s.ShowtimeId == showtimeId);
+        var showtime = await _context.Showtimes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.ShowtimeId == showtimeId);
 
-        if (!exists)
+        if (showtime == null)
         {
             return NotFound(new
             {
@@ -191,9 +175,18 @@ public class CustomerShowtimesController : ControllerBase
             });
         }
 
+        if (showtime.Status != "ACTIVE")
+        {
+            return BadRequest(new
+            {
+                success = false,
+                data = (object?)null,
+                message = "Suất chiếu này đã bị hủy hoặc không còn hoạt động."
+            });
+        }
+
         var now = DateTime.UtcNow;
 
-        // Get seats and calculate their actual status
         var seats = await _context.ShowtimeSeats
             .AsNoTracking()
             .Where(ss =>
@@ -204,19 +197,11 @@ public class CustomerShowtimesController : ControllerBase
             .Select(ss => new
             {
                 seatId = ss.SeatId,
-
-                seatNumber =
-                    $"{ss.Seat!.Row}{ss.Seat.Column}",
-
-                // Priority:
-                // 1. BOOKED: ticket already exists
-                // 2. HELD: active and unexpired payment attempt
-                // 3. Original seat status
+                seatNumber = $"{ss.Seat!.Row}{ss.Seat.Column}",
                 status = _context.Tickets.Any(t =>
                     t.ShowtimeSeatId == ss.ShowtimeSeatId &&
                     (t.Status == "VALID" || t.Status == "PRINTED"))
                     ? "BOOKED"
-
                     : _context.Tickets.Any(t =>
                         t.ShowtimeSeatId == ss.ShowtimeSeatId &&
                         t.Status == "HELD" &&
@@ -224,9 +209,7 @@ public class CustomerShowtimesController : ControllerBase
                         t.Booking.Status == "PENDING" &&
                         t.Booking.ExpiredAt > now)
                         ? "HELD"
-
                         : ss.Status,
-
                 price = ss.Price
             })
             .ToListAsync();

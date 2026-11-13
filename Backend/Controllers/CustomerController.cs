@@ -3,7 +3,6 @@ using Backend.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MovieTicketBooking.Api.DTOs;
 using System.Security.Claims;
 
 namespace Backend.Controllers;

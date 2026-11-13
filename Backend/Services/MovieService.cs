@@ -53,7 +53,7 @@ public class MovieService
             !allowedStatuses.Contains(status))
             throw new ArgumentException("Status không hợp lệ.");
 
-        if (posterUrl.Length > 500 || trailerUrl.Length > 500)
+        if ((posterUrl?.Length ?? 0) > 500 || (trailerUrl?.Length ?? 0) > 500)
             throw new ArgumentException("URL không được vượt quá 500 ký tự.");
 
         var movie = new Movie

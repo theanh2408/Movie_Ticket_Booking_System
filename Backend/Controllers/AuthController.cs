@@ -1,11 +1,10 @@
+using Backend.DTOs;
+using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using MovieTicketBooking.Api.DTOs;
-using MovieTicketBooking.Api.Services;
 using System.Security.Claims;
 
-namespace MovieTicketBooking.Api.Controllers;
+namespace Backend.Controllers;
 
 [ApiController]
 [Route("api/auth")]
@@ -23,8 +22,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register(
-        [FromBody] RegisterRequest request)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         try
         {
@@ -47,35 +45,20 @@ public class AuthController : ControllerBase
                 message = result.Message
             });
         }
-        catch (SqlException ex)
-            when (ex.Number is 2601 or 2627)
-        {
-            _logger.LogWarning(
-                ex, "Duplicate account data during registration.");
-
-            return Conflict(new
-            {
-                success = false,
-                data = (object?)null,
-                message = "Email or phone already exists"
-            });
-        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Registration failed.");
-
+            _logger.LogError(ex, "Đăng ký tài khoản thất bại.");
             return StatusCode(500, new
             {
                 success = false,
                 data = (object?)null,
-                message = "An unexpected error occurred"
+                message = "Đã xảy ra lỗi máy chủ trong quá trình đăng ký."
             });
         }
     }
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login(
-        [FromBody] LoginRequest request)
+    public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         try
         {
@@ -87,7 +70,7 @@ public class AuthController : ControllerBase
                 {
                     success = false,
                     data = (object?)null,
-                    message = "Invalid email or password"
+                    message = "Email hoặc mật khẩu không chính xác."
                 });
             }
 
@@ -101,42 +84,38 @@ public class AuthController : ControllerBase
                     expiresIn = result.Value.ExpiresIn,
                     user = result.Value.User
                 },
-                message = "Login successful"
+                message = "Đăng nhập thành công."
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Login failed.");
-
+            _logger.LogError(ex, "Đăng nhập thất bại.");
             return StatusCode(500, new
             {
                 success = false,
                 data = (object?)null,
-                message = "An unexpected error occurred"
+                message = "Đã xảy ra lỗi máy chủ trong quá trình đăng nhập."
             });
         }
     }
-
 
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
-        var userId = User.FindFirstValue(
-            ClaimTypes.NameIdentifier);
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        if (!int.TryParse(userId, out var parsedUserId))
+        if (!int.TryParse(userIdClaim, out var userId))
         {
             return Unauthorized(new
             {
                 success = false,
                 data = (object?)null,
-                message = "Invalid token"
+                message = "Token không hợp lệ."
             });
         }
 
-        var profile = await _authService.GetProfileAsync(
-            parsedUserId);
+        var profile = await _authService.GetProfileAsync(userId);
 
         if (profile == null)
         {
@@ -144,7 +123,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "User not found"
+                message = "Không tìm thấy người dùng."
             });
         }
 
@@ -152,7 +131,7 @@ public class AuthController : ControllerBase
         {
             success = true,
             data = profile,
-            message = "User retrieved successfully"
+            message = "Lấy thông tin người dùng thành công."
         });
     }
 
@@ -160,19 +139,17 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public IActionResult Logout()
     {
-        // JWT stateless: frontend cần xóa token khi đăng xuất.
         return Ok(new
         {
             success = true,
             data = (object?)null,
-            message = "Logout successful"
+            message = "Đăng xuất thành công."
         });
     }
 
     [Authorize]
     [HttpPatch("me")]
-    public async Task<IActionResult> UpdateProfile(
-    [FromBody] UpdateProfileRequest request)
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -182,7 +159,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "Invalid user token"
+                message = "Token không hợp lệ."
             });
         }
 
@@ -194,7 +171,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "User not found"
+                message = "Không tìm thấy người dùng."
             });
         }
 
@@ -209,18 +186,15 @@ public class AuthController : ControllerBase
                 dob = request.Dob,
                 gender = request.Gender
             },
-            message = "Profile updated successfully"
+            message = "Cập nhật hồ sơ thành công."
         });
     }
 
-
     [Authorize]
     [HttpPatch("me/password")]
-    public async Task<IActionResult> ChangePassword(
-        [FromBody] ChangePasswordRequest request)
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
-        var userIdClaim = User.FindFirstValue(
-            ClaimTypes.NameIdentifier);
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (!int.TryParse(userIdClaim, out var userId))
         {
@@ -228,7 +202,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "Invalid user token"
+                message = "Token không hợp lệ."
             });
         }
 
@@ -243,7 +217,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "User not found"
+                message = "Không tìm thấy người dùng."
             });
         }
 
@@ -253,7 +227,7 @@ public class AuthController : ControllerBase
             {
                 success = false,
                 data = (object?)null,
-                message = "Current password is incorrect"
+                message = "Mật khẩu hiện tại không chính xác."
             });
         }
 
@@ -261,7 +235,7 @@ public class AuthController : ControllerBase
         {
             success = true,
             data = (object?)null,
-            message = "Password changed successfully"
+            message = "Đổi mật khẩu thành công."
         });
     }
 }

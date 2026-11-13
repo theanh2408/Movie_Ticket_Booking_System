@@ -70,6 +70,8 @@ public class TicketCheckingController : ControllerBase
         if (string.IsNullOrWhiteSpace(token)) return null;
         return await _context.BookingQRs
             .Include(q => q.Booking!).ThenInclude(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat!).ThenInclude(s => s.Showtime!).ThenInclude(s => s.Movie)
+            .Include(q => q.Booking!).ThenInclude(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat!).ThenInclude(s => s.Showtime!).ThenInclude(s => s.Room)
+            .Include(q => q.Booking!).ThenInclude(b => b.Tickets).ThenInclude(t => t.ShowtimeSeat!).ThenInclude(s => s.Seat)
             .Include(q => q.Booking!).ThenInclude(b => b.Payments)
             .Include(q => q.Booking!).ThenInclude(b => b.Customer!).ThenInclude(c => c.User)
             .FirstOrDefaultAsync(q => q.Token == token.Trim(), cancellationToken);
@@ -88,6 +90,8 @@ public class TicketCheckingController : ControllerBase
     {
         bookingId = qr.Booking!.BookingId,
         qrStatus = qr.Status,
+        customerName = qr.Booking.Customer?.User?.FullName,
+        phone = qr.Booking.Customer?.User?.Phone,
         customer = new
         {
             customerId = qr.Booking.CustomerId,
@@ -95,6 +99,10 @@ public class TicketCheckingController : ControllerBase
             phone = qr.Booking.Customer?.User?.Phone,
             email = qr.Booking.Customer?.User?.Email
         },
+        movieTitle = qr.Booking.Tickets.FirstOrDefault()?.ShowtimeSeat?.Showtime?.Movie?.Title,
+        showtime = qr.Booking.Tickets.FirstOrDefault()?.ShowtimeSeat?.Showtime?.StartHour?.ToString(),
+        room = qr.Booking.Tickets.FirstOrDefault()?.ShowtimeSeat?.Showtime?.Room?.RoomName,
+        seats = qr.Booking.Tickets.Select(t => $"{t.ShowtimeSeat?.Seat?.Row}{t.ShowtimeSeat?.Seat?.Column}").ToList(),
         totalAmount = qr.Booking.TotalAmount,
         printStatus = qr.Booking.Tickets.All(t => t.Status == "PRINTED") ? "PRINTED" : "NOT_PRINTED",
         tickets = qr.Booking.Tickets.Select(ToTicketResponse).ToList()

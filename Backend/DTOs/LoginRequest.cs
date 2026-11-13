@@ -1,7 +1,7 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace MovieTicketBooking.Api.DTOs;
+namespace Backend.DTOs;
 
 public class LoginRequest
 {
