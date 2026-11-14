@@ -1,4 +1,3 @@
-
 using Backend.Data;
 using Backend.Models;
 using Microsoft.EntityFrameworkCore;
@@ -46,6 +45,54 @@ public class MovieRepository
         await _context.SaveChangesAsync(cancellationToken);
 
         return movie;
+    }
+
+    public async Task<Movie?> GetByIdAsync(
+        int movieId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Movies
+            .Include(m => m.Genres)
+            .Include(m => m.Showtimes)
+            .FirstOrDefaultAsync(m => m.MovieId == movieId, cancellationToken);
+    }
+
+    public async Task<Movie> UpdateAsync(
+        Movie movie,
+        IReadOnlyCollection<int>? genreIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (genreIds != null)
+        {
+            var uniqueGenreIds = genreIds.Distinct().ToList();
+            var genres = await _context.Genres
+                .Where(g => uniqueGenreIds.Contains(g.GenreId))
+                .ToListAsync(cancellationToken);
+
+            if (genres.Count != uniqueGenreIds.Count)
+            {
+                throw new ArgumentException("Một hoặc nhiều thể loại không tồn tại.");
+            }
+
+            movie.Genres.Clear();
+            foreach (var g in genres)
+            {
+                movie.Genres.Add(g);
+            }
+        }
+
+        _context.Movies.Update(movie);
+        await _context.SaveChangesAsync(cancellationToken);
+        return movie;
+    }
+
+    public async Task DeleteAsync(
+        Movie movie,
+        CancellationToken cancellationToken = default)
+    {
+        movie.Genres.Clear();
+        _context.Movies.Remove(movie);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<bool> ExistsAsync(
