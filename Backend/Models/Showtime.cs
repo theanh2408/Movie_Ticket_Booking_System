@@ -1,27 +1,28 @@
-﻿using System;
-using System.Collections.Generic;
-
 namespace Backend.Models;
 
-public partial class Showtime
+public class Showtime
 {
-    public int ShowtimeId { get; set; }
-
-    public TimeOnly? StartHour { get; set; }
-
+    public int ShowtimeID { get; set; }
+    public TimeOnly? StartHour { get; set; }     // cột Start_hour
     public DateOnly? Date { get; set; }
-
     public decimal? BasePrice { get; set; }
-
     public string? Status { get; set; }
+    public int? MovieID { get; set; }
+    public int? RoomID { get; set; }
 
-    public int? MovieId { get; set; }
+    public Movie Movie { get; set; } = null!;
+    public Room Room { get; set; } = null!;
+    public ICollection<ShowtimeSeat> ShowtimeSeats { get; set; } = new List<ShowtimeSeat>();
+}
 
-    public int? RoomId { get; set; }
+public class ShowtimeSeat
+{
+    public int ShowtimeSeatID { get; set; }      // cột Showtime_SeatID
+    public string? Status { get; set; }
+    public decimal? Price { get; set; }
+    public int? ShowtimeID { get; set; }
+    public int? SeatID { get; set; }
 
-    public virtual Movie? Movie { get; set; }
-
-    public virtual Room? Room { get; set; }
-
-    public virtual ICollection<ShowtimeSeat> ShowtimeSeats { get; set; } = new List<ShowtimeSeat>();
+    public Showtime Showtime { get; set; } = null!;
+    public Seat Seat { get; set; } = null!;
 }
