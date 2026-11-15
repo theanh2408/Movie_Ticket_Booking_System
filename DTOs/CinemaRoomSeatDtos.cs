@@ -1,0 +1,102 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Backend.DTOs;
+
+public class CinemaDto
+{
+    public int CinemaID { get; set; }
+    public string? CinemaName { get; set; }
+    public string? Address { get; set; }
+    public string? Status { get; set; }
+}
+
+public class RoomUpsertDto
+{
+    [Required(ErrorMessage = "Tên phòng không được để trống"), StringLength(100)]
+    public string RoomName { get; set; } = string.Empty;
+
+    /// <summary>Admin bắt buộc chọn rạp. Quản lý: tự lấy rạp của mình.</summary>
+    public int? CinemaId { get; set; }
+
+    [Range(1, 2000, ErrorMessage = "Sức chứa phải từ 1 đến 2000")]
+    public int? Capacity { get; set; }
+
+    [StringLength(255)]
+    public string? Description { get; set; }
+
+    /// <summary>Active | Inactive (mặc định Active)</summary>
+    public string? Status { get; set; }
+}
+
+public class RoomResponseDto
+{
+    public int RoomID { get; set; }
+    public string? RoomName { get; set; }
+    public string? Status { get; set; }
+    public int? CinemaID { get; set; }
+    public string? CinemaName { get; set; }
+    public int? Capacity { get; set; }
+    public string? Description { get; set; }
+    public int SeatCount { get; set; }
+}
+
+public class SeatCreateDto
+{
+    [Required(ErrorMessage = "Hàng ghế không được để trống"), StringLength(20)]
+    public string Row { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Số ghế không được để trống"), StringLength(20)]
+    public string Column { get; set; } = string.Empty;
+
+    [StringLength(50)]
+    public string? SeatType { get; set; }
+}
+
+/// <summary>Tạo hàng loạt: RowCount hàng (A, B, C...) x SeatsPerRow ghế (1, 2, 3...)</summary>
+public class SeatBulkCreateDto
+{
+    [Range(1, 26, ErrorMessage = "Số hàng từ 1 đến 26")]
+    public int RowCount { get; set; }
+
+    [Range(1, 50, ErrorMessage = "Số ghế mỗi hàng từ 1 đến 50")]
+    public int SeatsPerRow { get; set; }
+
+    [StringLength(50)]
+    public string? SeatType { get; set; }
+}
+
+public class SeatResponseDto
+{
+    public int SeatID { get; set; }
+    public string? Row { get; set; }
+    public string? Column { get; set; }
+    public string SeatCode { get; set; } = string.Empty;
+    public string? SeatType { get; set; }
+    public int? RoomID { get; set; }
+}
+
+public class SeatMapItemDto
+{
+    public int SeatId { get; set; }
+    public string? Row { get; set; }
+    public string? Column { get; set; }
+    public string SeatCode { get; set; } = string.Empty;
+    public string? SeatType { get; set; }
+    public int? ShowtimeSeatId { get; set; }   // chỉ có khi xem theo suất chiếu
+    public string? Status { get; set; }        // chỉ có khi xem theo suất chiếu
+    public decimal? Price { get; set; }
+}
+
+public class SeatMapRowDto
+{
+    public string Row { get; set; } = string.Empty;
+    public List<SeatMapItemDto> Seats { get; set; } = new();
+}
+
+public class SeatMapDto
+{
+    public int RoomId { get; set; }
+    public string? RoomName { get; set; }
+    public int? ShowtimeId { get; set; }
+    public List<SeatMapRowDto> Rows { get; set; } = new();
+}
