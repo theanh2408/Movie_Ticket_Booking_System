@@ -1,0 +1,39 @@
+# Backend Admin - Movie Ticket Booking (ASP.NET Core / .NET 10)
+
+## 1. Database
+Chạy lần lượt trong SSMS:
+1. SE-database.sql
+2. SE-database-cập nhật lần 1.sql
+3. SE-database-cap-nhat-lan-2.sql   (file này nằm cạnh thư mục Backend; thêm Account.Status, bảng Staff, Room.Capacity, Seat.SeatType...)
+
+## 2. Cấu hình
+Sửa `Server=` trong `Backend/appsettings.json` cho đúng máy bạn (mặc định LocalDB).
+Đổi `Jwt:Key` thành chuỗi bí mật riêng (>= 32 ký tự).
+
+## 3. Chạy
+    cd Backend
+    dotnet restore
+    dotnet run
+
+Mở /swagger. Hướng dẫn demo xem API-GUIDE.md.
+
+## Cấu trúc (Controller -> Service -> Repository -> Data)
+    Backend/
+      Controllers/   MoviesController, ShowtimesController, BookingsController, PaymentsController
+      Services/      MovieService,     ShowtimeService,     BookingService,     PaymentService
+      Repositories/  MovieRepository,  ShowtimeRepository,  BookingRepository,  PaymentRepository
+      Data/          ApplicationDbContext
+      Models/        Movie, Cinema, Seat, Showtime, Ticket, Invoice, Account, Booking, Payment, Promotion, Constants
+      DTOs/          MovieDtos, ShowtimeDtos, BookingDtos, PaymentDtos
+
+Mỗi file gom các lớp cùng nhóm nghiệp vụ:
+
+| File | Gồm các lớp |
+|---|---|
+| Movies*      | Movies, Genres |
+| Showtimes*   | Showtimes, Cinemas, Rooms, Seats, Staff |
+| Bookings*    | Bookings, Customers, Promotions, Auth, Profile, Accounts |
+| Payments*    | Payments, Invoices, Statistics |
+
+(* áp dụng cho cả Controllers, Services, Repositories.) Các lớp tiện ích dùng chung
+(xử lý lỗi, phân quyền, JWT, Swagger) nằm cuối file Program.cs, namespace Backend.Common.
