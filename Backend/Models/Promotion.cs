@@ -2,7 +2,7 @@ namespace Backend.Models;
 
 public class Promotion
 {
-    public int PromotionId { get; set; }
+    public int PromotionID { get; set; }
     public string? Code { get; set; }
     public string? PromotionName { get; set; }
     public string? Description { get; set; }
@@ -15,5 +15,13 @@ public class Promotion
     public int? UsageLimit { get; set; }
     public int? UsagePerCustomer { get; set; }
     public string? Status { get; set; }
-    public ICollection<BookingPromotion> BookingPromotions { get; set; } = new List<BookingPromotion>();
+}
+
+public class BookingPromotion
+{
+    public int BookingPromotionID { get; set; }
+    public int BookingID { get; set; }
+    public int PromotionID { get; set; }
+    public decimal? DiscountAmount { get; set; }
+    public DateTime? AppliedAt { get; set; }
 }
