@@ -1,337 +1,204 @@
-﻿using System;
-using System.Collections.Generic;
+using Backend.Common;
 using Backend.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Data;
 
-public partial class ApplicationDbContext : DbContext
+public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext()
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<Manager> Managers => Set<Manager>();
+    public DbSet<Staff> Staffs => Set<Staff>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Cinema> Cinemas => Set<Cinema>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<Seat> Seats => Set<Seat>();
+    public DbSet<Movie> Movies => Set<Movie>();
+    public DbSet<Genre> Genres => Set<Genre>();
+    public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
+    public DbSet<Showtime> Showtimes => Set<Showtime>();
+    public DbSet<ShowtimeSeat> ShowtimeSeats => Set<ShowtimeSeat>();
+    public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
+    public DbSet<BookingQR> BookingQRs => Set<BookingQR>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<BookingPromotion> BookingPromotions => Set<BookingPromotion>();
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
+        builder.Properties<decimal>().HavePrecision(18, 2);
     }
 
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-        : base(options)
+    protected override void OnModelCreating(ModelBuilder mb)
     {
+        // ----- Tài khoản -----
+        mb.Entity<Account>(e =>
+        {
+            e.ToTable("Account");
+            e.HasKey(x => x.UserID);
+            e.HasOne(a => a.Manager).WithOne(m => m.Account).HasForeignKey<Manager>(m => m.UserID);
+            e.HasOne(a => a.Staff).WithOne(s => s.Account).HasForeignKey<Staff>(s => s.UserID);
+            e.HasOne(a => a.Customer).WithOne(c => c.Account).HasForeignKey<Customer>(c => c.UserID);
+        });
+        mb.Entity<Manager>(e =>
+        {
+            e.ToTable("Manager"); e.HasKey(x => x.ManagerID);
+            e.HasOne(m => m.Cinema).WithMany().HasForeignKey(m => m.CinemaID);
+        });
+        mb.Entity<Staff>(e =>
+        {
+            e.ToTable("Staff"); e.HasKey(x => x.StaffID);
+            e.HasOne(s => s.Cinema).WithMany().HasForeignKey(s => s.CinemaID);
+        });
+        mb.Entity<Customer>(e => { e.ToTable("Customer"); e.HasKey(x => x.CustomerID); });
+
+        // ----- Rạp / phòng / ghế -----
+        mb.Entity<Cinema>(e => { e.ToTable("Cinema"); e.HasKey(x => x.CinemaID); });
+        mb.Entity<Room>(e =>
+        {
+            e.ToTable("Room"); e.HasKey(x => x.RoomID);
+            e.HasOne(r => r.Cinema).WithMany(c => c.Rooms).HasForeignKey(r => r.CinemaID);
+        });
+        mb.Entity<Seat>(e =>
+        {
+            e.ToTable("Seat"); e.HasKey(x => x.SeatID);
+            e.Property(x => x.Row).HasColumnName("Row");
+            e.Property(x => x.Column).HasColumnName("Column");
+            e.HasOne(s => s.Room).WithMany(r => r.Seats).HasForeignKey(s => s.RoomID);
+        });
+
+        // ----- Phim -----
+        mb.Entity<Movie>(e => { e.ToTable("Movie"); e.HasKey(x => x.MovieID); });
+        mb.Entity<Genre>(e =>
+        {
+            e.ToTable("Genre"); e.HasKey(x => x.GenreID);
+            e.Property(x => x.GenreID).HasColumnName("Genre_ID");
+        });
+        mb.Entity<MovieGenre>(e =>
+        {
+            e.ToTable("Movie_Genre");
+            e.HasKey(x => new { x.MovieID, x.GenreID });
+            e.Property(x => x.GenreID).HasColumnName("Genre_ID");
+            e.HasOne(x => x.Movie).WithMany(m => m.MovieGenres).HasForeignKey(x => x.MovieID);
+            e.HasOne(x => x.Genre).WithMany(g => g.MovieGenres).HasForeignKey(x => x.GenreID);
+        });
+
+        // ----- Suất chiếu -----
+        mb.Entity<Showtime>(e =>
+        {
+            e.ToTable("Showtime"); e.HasKey(x => x.ShowtimeID);
+            e.Property(x => x.StartHour).HasColumnName("Start_hour");
+            e.HasOne(s => s.Movie).WithMany().HasForeignKey(s => s.MovieID);
+            e.HasOne(s => s.Room).WithMany(r => r.Showtimes).HasForeignKey(s => s.RoomID);
+        });
+        mb.Entity<ShowtimeSeat>(e =>
+        {
+            e.ToTable("Showtime_Seat"); e.HasKey(x => x.ShowtimeSeatID);
+            e.Property(x => x.ShowtimeSeatID).HasColumnName("Showtime_SeatID");
+            e.HasOne(x => x.Showtime).WithMany(s => s.ShowtimeSeats).HasForeignKey(x => x.ShowtimeID);
+            e.HasOne(x => x.Seat).WithMany().HasForeignKey(x => x.SeatID);
+        });
+
+        // ----- Đặt vé / thanh toán / hóa đơn -----
+        mb.Entity<Booking>(e =>
+        {
+            e.ToTable("Booking"); e.HasKey(x => x.BookingID);
+            e.HasOne(b => b.Customer).WithMany(c => c.Bookings).HasForeignKey(b => b.CustomerID);
+            e.HasOne(b => b.Showtime).WithMany().HasForeignKey(b => b.ShowtimeID);
+        });
+        mb.Entity<BookingQR>(e =>
+        {
+            e.ToTable("BookingQR"); e.HasKey(x => x.QRID);
+            e.HasOne(q => q.Booking).WithMany(b => b.QRs).HasForeignKey(q => q.BookingID);
+        });
+        mb.Entity<Ticket>(e =>
+        {
+            e.ToTable("Ticket"); e.HasKey(x => x.TicketID);
+            e.Property(x => x.ShowtimeSeatID).HasColumnName("Showtime_SeatID");
+            e.Property(x => x.BookingID).HasColumnName("Booking_ID");
+            e.HasOne(t => t.ShowtimeSeat).WithMany().HasForeignKey(t => t.ShowtimeSeatID);
+            e.HasOne(t => t.Booking).WithMany(b => b.Tickets).HasForeignKey(t => t.BookingID);
+        });
+        mb.Entity<Payment>(e =>
+        {
+            e.ToTable("Payment"); e.HasKey(x => x.PaymentID);
+            e.HasOne(p => p.Booking).WithMany(b => b.Payments).HasForeignKey(p => p.BookingID);
+        });
+        mb.Entity<Invoice>(e =>
+        {
+            e.ToTable("Invoice"); e.HasKey(x => x.InvoiceID);
+            e.HasOne(i => i.Booking).WithOne(b => b.Invoice).HasForeignKey<Invoice>(i => i.BookingID);
+        });
+        mb.Entity<InvoiceDetail>(e =>
+        {
+            e.ToTable("Invoice_Detail"); e.HasKey(x => x.DetailID);
+            e.HasOne(d => d.Invoice).WithMany(i => i.Details).HasForeignKey(d => d.InvoiceID);
+            e.HasOne(d => d.Ticket).WithMany().HasForeignKey(d => d.TicketID);
+        });
+
+        // ----- Khuyến mãi -----
+        mb.Entity<Promotion>(e => { e.ToTable("Promotion"); e.HasKey(x => x.PromotionID); });
+        mb.Entity<BookingPromotion>(e =>
+        {
+            e.ToTable("Booking_Promotion"); e.HasKey(x => x.BookingPromotionID);
+            e.HasOne(bp => bp.Booking).WithMany(b => b.BookingPromotions).HasForeignKey(bp => bp.BookingID);
+            e.HasOne(bp => bp.Promotion).WithMany().HasForeignKey(bp => bp.PromotionID);
+        });
     }
+}
 
-    public virtual DbSet<Account> Accounts { get; set; }
-
-    public virtual DbSet<Booking> Bookings { get; set; }
-
-    public virtual DbSet<BookingPromotion> BookingPromotions { get; set; }
-
-    public virtual DbSet<BookingQR> BookingQRs { get; set; }
-
-    public virtual DbSet<Customer> Customers { get; set; }
-
-    public virtual DbSet<Cinema> Cinemas { get; set; }
-
-    public virtual DbSet<Genre> Genres { get; set; }
-
-    public virtual DbSet<Invoice> Invoices { get; set; }
-
-    public virtual DbSet<InvoiceDetail> InvoiceDetails { get; set; }
-
-    public virtual DbSet<Movie> Movies { get; set; }
-
-    public virtual DbSet<Payment> Payments { get; set; }
-
-    public virtual DbSet<Promotion> Promotions { get; set; }
-
-    public virtual DbSet<Room> Rooms { get; set; }
-
-    public virtual DbSet<Seat> Seats { get; set; }
-
-    public virtual DbSet<Showtime> Showtimes { get; set; }
-
-    public virtual DbSet<ShowtimeSeat> ShowtimeSeats { get; set; }
-
-    public virtual DbSet<Ticket> Tickets { get; set; }
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+/// <summary>
+/// Tạo dữ liệu mẫu tối thiểu nếu DB còn trống: 1 tài khoản Admin, vài thể loại, 1 rạp.
+/// Chỉ chèn khi chưa có dữ liệu tương ứng. Tắt bằng "Seed:Enabled": false trong appsettings.json.
+/// </summary>
+public static class DbSeeder
+{
+    public static async Task SeedAsync(IServiceProvider services)
     {
-        modelBuilder.Entity<Account>(entity =>
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
+
+        try
         {
-            entity.HasKey(e => e.UserId);
+            if (!await db.Accounts.AnyAsync(a => a.Role == AppRoles.Admin))
+            {
+                db.Accounts.Add(new Account
+                {
+                    FullName = "Administrator",
+                    Email = "admin@cinema.local",
+                    Role = AppRoles.Admin,
+                    Status = AccountStatus.Active,
+                    PasswordHash = PasswordHasher.Hash("Admin@123")
+                });
+                logger.LogInformation("Đã tạo tài khoản admin mẫu: admin@cinema.local / Admin@123");
+            }
 
-            entity.ToTable("Account");
+            if (!await db.Genres.AnyAsync())
+            {
+                db.Genres.AddRange(
+                    new Genre { GenreName = "Hành động" },
+                    new Genre { GenreName = "Hài" },
+                    new Genre { GenreName = "Kinh dị" },
+                    new Genre { GenreName = "Tình cảm" },
+                    new Genre { GenreName = "Hoạt hình" });
+            }
 
-            entity.Property(e => e.UserId).HasColumnName("UserID");
-            entity.Property(e => e.Dob).HasColumnName("DOB");
-            entity.Property(e => e.Email).HasMaxLength(255);
-            entity.Property(e => e.FullName).HasMaxLength(100);
-            entity.Property(e => e.Gender).HasMaxLength(20);
-            entity.Property(e => e.PasswordHash).HasMaxLength(255);
-            entity.Property(e => e.Phone).HasMaxLength(20);
-            entity.Property(e => e.Role).HasMaxLength(50);
-        });
+            if (!await db.Cinemas.AnyAsync())
+            {
+                db.Cinemas.Add(new Cinema { CinemaName = "Rạp trung tâm", Address = "Quận 1, TP.HCM", Status = CinemaStatus.Opened });
+            }
 
-        modelBuilder.Entity<Booking>(entity =>
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
         {
-            entity.ToTable("Booking");
-            entity.Property(e => e.BookingId).HasColumnName("BookingID");
-            entity.Property(e => e.CustomerId).HasColumnName("CustomerID");
-            entity.Property(e => e.CreatedDate).HasColumnType("datetime");
-            entity.Property(e => e.ExpiredAt).HasColumnType("datetime");
-            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.SubTotal).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.Status).HasMaxLength(50).IsUnicode(false);
-            entity.HasOne(e => e.Customer).WithMany(e => e.Bookings)
-                .HasForeignKey(e => e.CustomerId)
-                .HasConstraintName("FK_Booking_Customer");
-        });
-
-        modelBuilder.Entity<BookingPromotion>(entity =>
-        {
-            entity.ToTable("Booking_Promotion");
-            entity.HasKey(e => e.BookingPromotionId);
-            entity.Property(e => e.BookingPromotionId).HasColumnName("BookingPromotionID");
-            entity.Property(e => e.BookingId).HasColumnName("BookingID");
-            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
-            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.AppliedAt).HasColumnType("datetime");
-            entity.HasOne(e => e.Booking).WithMany(e => e.BookingPromotions)
-                .HasForeignKey(e => e.BookingId)
-                .HasConstraintName("FK_BookingPromotion_Booking");
-            entity.HasOne(e => e.Promotion).WithMany(e => e.BookingPromotions)
-                .HasForeignKey(e => e.PromotionId)
-                .HasConstraintName("FK_BookingPromotion_Promotion");
-        });
-
-        modelBuilder.Entity<BookingQR>(entity =>
-        {
-            entity.ToTable("BookingQR");
-            entity.HasKey(e => e.QrId);
-            entity.Property(e => e.QrId).HasColumnName("QRID");
-            entity.Property(e => e.BookingId).HasColumnName("BookingID");
-            entity.Property(e => e.Token).HasMaxLength(128).IsUnicode(false);
-            entity.Property(e => e.Status).HasMaxLength(20).IsUnicode(false);
-            entity.HasIndex(e => e.Token).IsUnique().HasDatabaseName("UQ_BookingQR_Token");
-            entity.HasOne(e => e.Booking).WithMany(e => e.BookingQRs)
-                .HasForeignKey(e => e.BookingId)
-                .HasConstraintName("FK_BookingQR_Booking");
-        });
-
-        modelBuilder.Entity<Customer>(entity =>
-        {
-            entity.ToTable("Customer");
-            entity.HasIndex(e => e.UserId).IsUnique().HasDatabaseName("UQ_Customer_User");
-            entity.Property(e => e.CustomerId).HasColumnName("CustomerID");
-            entity.Property(e => e.UserId).HasColumnName("UserID");
-            entity.HasOne(e => e.User).WithOne(e => e.Customer)
-                .HasForeignKey<Customer>(e => e.UserId)
-                .HasConstraintName("FK_Customer_Account");
-        });
-
-        modelBuilder.Entity<Cinema>(entity =>
-        {
-            entity.ToTable("Cinema");
-
-            entity.Property(e => e.CinemaId).HasColumnName("CinemaID");
-            entity.Property(e => e.Address).HasMaxLength(255);
-            entity.Property(e => e.CinemaName).HasMaxLength(150);
-            entity.Property(e => e.Status).HasMaxLength(50);
-        });
-
-        modelBuilder.Entity<Genre>(entity =>
-        {
-            entity.ToTable("Genre");
-
-            entity.Property(e => e.GenreId).HasColumnName("Genre_ID");
-            entity.Property(e => e.GenreName).HasMaxLength(100);
-        });
-
-        modelBuilder.Entity<Invoice>(entity =>
-        {
-            entity.ToTable("Invoice");
-
-            entity.Property(e => e.CreateDate).HasColumnType("datetime");
-            entity.Property(e => e.Status).HasMaxLength(50);
-            entity.Property(e => e.TotalPrice).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.BookingId).HasColumnName("BookingID");
-            entity.HasIndex(e => e.BookingId).IsUnique().HasDatabaseName("UQ_Invoice_Booking");
-            entity.HasOne(e => e.Booking).WithOne(e => e.Invoice)
-                .HasForeignKey<Invoice>(e => e.BookingId)
-                .HasConstraintName("FK_Invoice_Booking");
-        });
-
-        modelBuilder.Entity<InvoiceDetail>(entity =>
-        {
-            entity.HasKey(e => e.DetailId);
-            entity.ToTable("Invoice_Detail");
-            entity.Property(e => e.DetailId).HasColumnName("DetailID");
-            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceID");
-            entity.Property(e => e.TicketId).HasColumnName("TicketID");
-            entity.HasOne(e => e.Invoice).WithMany(e => e.InvoiceDetails)
-                .HasForeignKey(e => e.InvoiceId)
-                .HasConstraintName("FK_InvoiceDetail_Invoice");
-            entity.HasOne(e => e.Ticket).WithMany(e => e.InvoiceDetails)
-                .HasForeignKey(e => e.TicketId)
-                .HasConstraintName("FK_InvoiceDetail_Ticket");
-        });
-
-        modelBuilder.Entity<Movie>(entity =>
-        {
-            entity.ToTable("Movie");
-
-            entity.Property(e => e.MovieId).HasColumnName("MovieID");
-            entity.Property(e => e.AgeRating).HasMaxLength(20);
-            entity.Property(e => e.PosterUrl)
-                .HasMaxLength(500)
-                .HasColumnName("PosterURL");
-            entity.Property(e => e.Status).HasMaxLength(50);
-            entity.Property(e => e.Title).HasMaxLength(255);
-            entity.Property(e => e.TrailerUrl)
-                .HasMaxLength(500)
-                .HasColumnName("TrailerURL");
-
-            entity.HasMany(d => d.Genres).WithMany(p => p.Movies)
-                .UsingEntity<Dictionary<string, object>>(
-                    "MovieGenre",
-                    r => r.HasOne<Genre>().WithMany()
-                        .HasForeignKey("GenreId")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_MovieGenre_Genre"),
-                    l => l.HasOne<Movie>().WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_MovieGenre_Movie"),
-                    j =>
-                    {
-                        j.HasKey("MovieId", "GenreId");
-                        j.ToTable("Movie_Genre");
-                        j.IndexerProperty<int>("MovieId").HasColumnName("MovieID");
-                        j.IndexerProperty<int>("GenreId").HasColumnName("Genre_ID");
-                    });
-        });
-
-        modelBuilder.Entity<Payment>(entity =>
-        {
-            entity.ToTable("Payment");
-
-            entity.Property(e => e.PaymentId).HasColumnName("PaymentID");
-            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.BookingId).HasColumnName("BookingID");
-            entity.Property(e => e.PaymentDate).HasColumnType("datetime");
-            entity.Property(e => e.PaymentMethod).HasMaxLength(50);
-            entity.Property(e => e.PaymentStatus).HasMaxLength(50);
-            entity.Property(e => e.TransactionNo).HasMaxLength(100);
-
-            entity.HasOne(d => d.Booking).WithMany(p => p.Payments)
-                .HasForeignKey(d => d.BookingId)
-                .HasConstraintName("FK_Payment_Booking");
-        });
-
-        modelBuilder.Entity<Promotion>(entity =>
-        {
-            entity.ToTable("Promotion");
-            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
-            entity.Property(e => e.Code).HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.PromotionName).HasMaxLength(255);
-            entity.Property(e => e.DiscountType).HasMaxLength(50).IsUnicode(false);
-            entity.Property(e => e.DiscountValue).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.MinOrderAmount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.MaxDiscountAmount).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.StartDate).HasColumnType("datetime");
-            entity.Property(e => e.EndDate).HasColumnType("datetime");
-            entity.Property(e => e.Status).HasMaxLength(50).IsUnicode(false);
-        });
-
-        modelBuilder.Entity<Room>(entity =>
-        {
-            entity.ToTable("Room");
-
-            entity.Property(e => e.RoomId).HasColumnName("RoomID");
-            entity.Property(e => e.CinemaId).HasColumnName("CinemaID");
-            entity.Property(e => e.RoomName).HasMaxLength(100);
-            entity.Property(e => e.Status).HasMaxLength(50);
-
-            entity.HasOne(d => d.Cinema).WithMany(p => p.Rooms)
-                .HasForeignKey(d => d.CinemaId)
-                .HasConstraintName("FK_Room_Cinema");
-        });
-
-        modelBuilder.Entity<Seat>(entity =>
-        {
-            entity.ToTable("Seat");
-
-            entity.Property(e => e.SeatId).HasColumnName("SeatID");
-            entity.Property(e => e.Column).HasMaxLength(20);
-            entity.Property(e => e.RoomId).HasColumnName("RoomID");
-            entity.Property(e => e.Row).HasMaxLength(20);
-
-            entity.HasOne(d => d.Room).WithMany(p => p.Seats)
-                .HasForeignKey(d => d.RoomId)
-                .HasConstraintName("FK_Seat_Room");
-        });
-
-        modelBuilder.Entity<Showtime>(entity =>
-        {
-            entity.ToTable("Showtime");
-
-            entity.Property(e => e.ShowtimeId).HasColumnName("ShowtimeID");
-            entity.Property(e => e.BasePrice).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.MovieId).HasColumnName("MovieID");
-            entity.Property(e => e.RoomId).HasColumnName("RoomID");
-            entity.Property(e => e.StartHour).HasColumnName("Start_hour");
-            entity.Property(e => e.Status).HasMaxLength(50);
-
-            entity.HasOne(d => d.Movie).WithMany(p => p.Showtimes)
-                .HasForeignKey(d => d.MovieId)
-                .HasConstraintName("FK_Showtime_Movie");
-
-            entity.HasOne(d => d.Room).WithMany(p => p.Showtimes)
-                .HasForeignKey(d => d.RoomId)
-                .HasConstraintName("FK_Showtime_Room");
-        });
-
-        modelBuilder.Entity<ShowtimeSeat>(entity =>
-        {
-            entity.ToTable("Showtime_Seat");
-
-            entity.Property(e => e.ShowtimeSeatId).HasColumnName("Showtime_SeatID");
-            entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.SeatId).HasColumnName("SeatID");
-            entity.Property(e => e.ShowtimeId).HasColumnName("ShowtimeID");
-            entity.Property(e => e.Status).HasMaxLength(50);
-
-            entity.HasOne(d => d.Seat).WithMany(p => p.ShowtimeSeats)
-                .HasForeignKey(d => d.SeatId)
-                .HasConstraintName("FK_ShowtimeSeat_Seat");
-
-            entity.HasOne(d => d.Showtime).WithMany(p => p.ShowtimeSeats)
-                .HasForeignKey(d => d.ShowtimeId)
-                .HasConstraintName("FK_ShowtimeSeat_Showtime");
-        });
-
-        modelBuilder.Entity<Ticket>(entity =>
-        {
-            entity.ToTable("Ticket");
-
-            entity.HasIndex(e => e.ShowtimeSeatId, "UQ_Ticket_ShowtimeSeat").IsUnique();
-
-            entity.Property(e => e.TicketId).HasColumnName("TicketID");
-            entity.Property(e => e.BookingId).HasColumnName("Booking_ID");
-            entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.ShowtimeSeatId).HasColumnName("Showtime_SeatID");
-            entity.Property(e => e.Status).HasMaxLength(100);
-            entity.Property(e => e.Barcode).HasMaxLength(128).IsUnicode(false);
-            entity.HasIndex(e => e.Barcode).IsUnique().HasDatabaseName("UX_Ticket_Barcode");
-
-            entity.HasOne(d => d.Booking).WithMany(p => p.Tickets)
-                .HasForeignKey(d => d.BookingId)
-                .HasConstraintName("FK_Ticket_Booking");
-
-            entity.HasOne(d => d.ShowtimeSeat).WithOne(p => p.Ticket)
-                .HasForeignKey<Ticket>(d => d.ShowtimeSeatId)
-                .HasConstraintName("FK_Ticket_ShowtimeSeat");
-        });
-
-        OnModelCreatingPartial(modelBuilder);
+            logger.LogError(ex, "Không tạo được dữ liệu mẫu. Bạn đã chạy file Create_Movie_Ticket_Booking_System.sql và Thêm bảng Staff.sql chưa?");
+        }
     }
-
-    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }

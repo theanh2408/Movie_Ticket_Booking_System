@@ -1,205 +1,100 @@
-using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Controllers;
 
+/// <summary>UC-8.x Quản lý phim. Xem/tìm kiếm/lọc: ai cũng gọi được. Thêm/sửa/xóa: Admin.</summary>
 [ApiController]
-[Route("api/admin/movies")]
-[Authorize(Roles = "ADMIN")]
+[Route("api/[controller]")]
 public class MoviesController : ControllerBase
 {
-    private readonly MovieService _movieService;
-    private readonly ApplicationDbContext _context;
+    private readonly IMovieService _service;
 
-    public MoviesController(MovieService movieService, ApplicationDbContext context)
+    public MoviesController(IMovieService service) => _service = service;
+
+    /// <summary>Danh sách phim; tìm theo tên (keyword), lọc theo trạng thái, thể loại, độ tuổi</summary>
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<ActionResult<List<MovieResponseDto>>> GetAll(
+        [FromQuery] string? keyword, [FromQuery] string? status, [FromQuery] int? genreId, [FromQuery] string? ageRating) =>
+        Ok(await _service.SearchAsync(keyword, status, genreId, ageRating));
+
+    [HttpGet("{id:int}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<MovieResponseDto>> GetById(int id)
     {
-        _movieService = movieService;
-        _context = context;
+        var movie = await _service.GetByIdAsync(id);
+        return movie is null ? NotFound(new { message = "Không tìm thấy phim" }) : Ok(movie);
     }
+
+    // POST api/movies  <-- chức năng THÊM PHIM (demo)
+    [HttpPost]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<ActionResult<MovieResponseDto>> Create([FromBody] CreateMovieDto dto)
+    {
+        var created = await _service.CreateAsync(dto);
+        return CreatedAtAction(nameof(GetById), new { id = created.MovieID }, created);
+    }
+
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<ActionResult<MovieResponseDto>> Update(int id, [FromBody] CreateMovieDto dto) =>
+        Ok(await _service.UpdateAsync(id, dto));
+
+    /// <summary>Xóa phim. Bị chặn nếu phim đã có suất chiếu (hãy đổi trạng thái thay vì xóa).</summary>
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _service.DeleteAsync(id);
+        return NoContent();
+    }
+
+    /// <summary>UC-8.8 Cập nhật trạng thái (chỉ Admin): ComingSoon | NowShowing | Ended | Inactive</summary>
+    [HttpPatch("{id:int}/status")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<ActionResult<MovieResponseDto>> UpdateStatus(int id, [FromBody] StatusDto dto) =>
+        Ok(await _service.UpdateStatusAsync(id, dto.Status));
+}
+
+/// <summary>UC-8.7 Quản lý danh mục (thể loại) phim</summary>
+[ApiController]
+[Route("api/[controller]")]
+public class GenresController : ControllerBase
+{
+    private readonly IGenreService _service;
+
+    public GenresController(IGenreService service) => _service = service;
 
     [HttpGet]
-    public async Task<IActionResult> GetAllMovies(CancellationToken cancellationToken)
-    {
-        var movies = await _context.Movies
-            .AsNoTracking()
-            .Include(m => m.Genres)
-            .OrderByDescending(m => m.MovieId)
-            .Select(m => new
-            {
-                movieId = m.MovieId,
-                title = m.Title,
-                description = m.Description,
-                duration = m.Duration,
-                posterUrl = m.PosterUrl,
-                trailerUrl = m.TrailerUrl,
-                ageRating = m.AgeRating,
-                releaseDate = m.ReleaseDate,
-                status = m.Status,
-                genres = m.Genres.Select(g => new { genreId = g.GenreId, genreName = g.GenreName }).ToList()
-            })
-            .ToListAsync(cancellationToken);
+    [AllowAnonymous]
+    public async Task<ActionResult<List<GenreDto>>> GetAll() => Ok(await _service.GetAllAsync());
 
-        return Ok(new
-        {
-            success = true,
-            data = movies,
-            message = "Lấy danh sách phim thành công."
-        });
-    }
-
-    [HttpGet("{movieId:int}")]
-    public async Task<IActionResult> GetMovie(int movieId, CancellationToken cancellationToken)
-    {
-        var movie = await _context.Movies
-            .AsNoTracking()
-            .Include(m => m.Genres)
-            .Where(m => m.MovieId == movieId)
-            .Select(m => new
-            {
-                movieId = m.MovieId,
-                title = m.Title,
-                description = m.Description,
-                duration = m.Duration,
-                posterUrl = m.PosterUrl,
-                trailerUrl = m.TrailerUrl,
-                ageRating = m.AgeRating,
-                releaseDate = m.ReleaseDate,
-                status = m.Status,
-                genres = m.Genres.Select(g => new { genreId = g.GenreId, genreName = g.GenreName }).ToList(),
-                genreIds = m.Genres.Select(g => g.GenreId).ToList()
-            })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (movie == null)
-        {
-            return NotFound(new { success = false, message = "Không tìm thấy phim." });
-        }
-
-        return Ok(new
-        {
-            success = true,
-            data = movie,
-            message = "Lấy chi tiết phim thành công."
-        });
-    }
+    [HttpGet("{id:int}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<GenreDto>> Get(int id) => Ok(await _service.GetAsync(id));
 
     [HttpPost]
-    public async Task<IActionResult> CreateMovie(
-        [FromBody] CreateMovieRequest request,
-        CancellationToken cancellationToken)
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<ActionResult<GenreDto>> Create([FromBody] GenreUpsertDto dto)
     {
-        try
-        {
-            var movie = await _movieService.CreateAsync(request, cancellationToken);
-
-            return Created(
-                $"/api/admin/movies/{movie.MovieId}",
-                new
-                {
-                    success = true,
-                    data = new
-                    {
-                        movieId = movie.MovieId,
-                        title = movie.Title,
-                        description = movie.Description,
-                        duration = movie.Duration,
-                        posterUrl = movie.PosterUrl,
-                        trailerUrl = movie.TrailerUrl,
-                        ageRating = movie.AgeRating,
-                        releaseDate = movie.ReleaseDate,
-                        status = movie.Status,
-                        genreIds = request.GenreIds.Distinct().ToList()
-                    },
-                    message = "Thêm phim thành công."
-                });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new
-            {
-                success = false,
-                data = (object?)null,
-                message = ex.Message
-            });
-        }
+        var created = await _service.CreateAsync(dto);
+        return CreatedAtAction(nameof(Get), new { id = created.GenreID }, created);
     }
 
-    [HttpPut("{movieId:int}")]
-    public async Task<IActionResult> UpdateMovie(
-        int movieId,
-        [FromBody] CreateMovieRequest request,
-        CancellationToken cancellationToken)
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<ActionResult<GenreDto>> Update(int id, [FromBody] GenreUpsertDto dto) =>
+        Ok(await _service.UpdateAsync(id, dto));
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    public async Task<IActionResult> Delete(int id)
     {
-        var movie = await _context.Movies
-            .Include(m => m.Genres)
-            .FirstOrDefaultAsync(m => m.MovieId == movieId, cancellationToken);
-
-        if (movie == null)
-        {
-            return NotFound(new { success = false, message = "Không tìm thấy phim để cập nhật." });
-        }
-
-        movie.Title = request.Title?.Trim();
-        movie.Description = request.Description?.Trim();
-        movie.Duration = request.Duration;
-        movie.PosterUrl = request.PosterUrl?.Trim();
-        movie.TrailerUrl = request.TrailerUrl?.Trim();
-        movie.AgeRating = request.AgeRating?.Trim();
-        movie.ReleaseDate = request.ReleaseDate;
-        movie.Status = request.Status?.Trim() ?? movie.Status;
-
-        if (request.GenreIds != null && request.GenreIds.Count > 0)
-        {
-            var genres = await _context.Genres
-                .Where(g => request.GenreIds.Contains(g.GenreId))
-                .ToListAsync(cancellationToken);
-            movie.Genres = genres;
-        }
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return Ok(new
-        {
-            success = true,
-            data = new
-            {
-                movieId = movie.MovieId,
-                title = movie.Title,
-                description = movie.Description,
-                duration = movie.Duration,
-                posterUrl = movie.PosterUrl,
-                trailerUrl = movie.TrailerUrl,
-                ageRating = movie.AgeRating,
-                releaseDate = movie.ReleaseDate,
-                status = movie.Status
-            },
-            message = "Cập nhật phim thành công."
-        });
-    }
-
-    [HttpDelete("{movieId:int}")]
-    public async Task<IActionResult> DeleteMovie(int movieId, CancellationToken cancellationToken)
-    {
-        var movie = await _context.Movies.FirstOrDefaultAsync(m => m.MovieId == movieId, cancellationToken);
-        if (movie == null)
-        {
-            return NotFound(new { success = false, message = "Không tìm thấy phim." });
-        }
-
-        // Soft delete / Chuyển trạng thái sang ENDED để không ảnh hưởng dữ liệu đặt vé lịch sử
-        movie.Status = "ENDED";
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return Ok(new
-        {
-            success = true,
-            data = new { movieId, status = movie.Status },
-            message = "Đã chuyển trạng thái phim sang kết thúc (ENDED)."
-        });
+        await _service.DeleteAsync(id);
+        return NoContent();
     }
 }
